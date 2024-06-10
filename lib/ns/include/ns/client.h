@@ -169,6 +169,8 @@ struct ns_clientmgr {
 
 	/*%< mctx pool for clients. */
 	isc_mem_t **mctxpool;
+
+	uint8_t tcp_buffer[NS_CLIENT_TCP_BUFFER_SIZE];
 };
 
 /*% nameserver client structure */
@@ -194,8 +196,8 @@ struct ns_client {
 	isc_nmhandle_t *prefetchhandle; /* Waiting for prefetch / rpzfetch */
 	isc_nmhandle_t *updatehandle;	/* Waiting for update callback */
 	unsigned char  *tcpbuf;
+	size_t	        tcpbuf_size;
 	dns_message_t  *message;
-	unsigned char  *sendbuf;
 	dns_rdataset_t *opt;
 	uint16_t	udpsize;
 	uint16_t	extflags;
@@ -247,6 +249,8 @@ struct ns_client {
 	 * bits will be used as the rcode in the response message.
 	 */
 	int32_t rcode_override;
+
+	uint8_t sendbuf[NS_CLIENT_SEND_BUFFER_SIZE];
 };
 
 #define NS_CLIENT_MAGIC	   ISC_MAGIC('N', 'S', 'C', 'c')
