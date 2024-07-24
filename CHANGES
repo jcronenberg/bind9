@@ -1,3 +1,6 @@
+6396.	[security]	Remove SIG(0) support from named as a countermeasure
+			for CVE-2024-1975. [GL #4480]
+
 6322.	[security]	Specific DNS answers could cause a denial-of-service
 			condition due to DNS validation taking a long time.
 			(CVE-2023-50387) [GL #4424]
