@@ -1310,7 +1310,9 @@ static dns_dbmethods_t sdb_methods = {
 	NULL, /* setservestalettl */
 	NULL, /* getservestalettl */
 	NULL, /* setgluecachestats */
-	NULL  /* adjusthashsize */
+	NULL, /* adjusthashsize */
+	NULL, /* setmaxrrperset */
+	NULL  /* setmaxtypepername */
 };
 
 static isc_result_t

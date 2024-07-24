@@ -163,7 +163,7 @@ options {
             unlimited | <integer> ) ] [ suffix ( increment
             | timestamp ) ]; // not configured
         dnstap-version ( <quoted_string> | none ); // not configured
-        dscp <integer>;
+        dscp <integer>; // deprecated
         dual-stack-servers [ port <integer> ] { ( <quoted_string> [ port
             <integer> ] [ dscp <integer> ] | <ipv4_address> [ port
             <integer> ] [ dscp <integer> ] | <ipv6_address> [ port
@@ -217,6 +217,7 @@ options {
         max-journal-size ( default | unlimited | <sizeval> );
         max-ncache-ttl <duration>;
         max-records <integer>;
+        max-records-per-type <integer>;
         max-recursion-depth <integer>;
         max-recursion-queries <integer>;
         max-refresh-time <integer>;
@@ -227,6 +228,7 @@ options {
         max-transfer-idle-out <integer>;
         max-transfer-time-in <integer>;
         max-transfer-time-out <integer>;
+        max-types-per-name <integer>;
         max-udp-size <integer>;
         max-zone-ttl ( unlimited | <duration> );
         memstatistics <boolean>;
@@ -541,6 +543,7 @@ view <string> [ <class> ] {
         max-journal-size ( default | unlimited | <sizeval> );
         max-ncache-ttl <duration>;
         max-records <integer>;
+        max-records-per-type <integer>;
         max-recursion-depth <integer>;
         max-recursion-queries <integer>;
         max-refresh-time <integer>;
@@ -550,6 +553,7 @@ view <string> [ <class> ] {
         max-transfer-idle-out <integer>;
         max-transfer-time-in <integer>;
         max-transfer-time-out <integer>;
+        max-types-per-name <integer>;
         max-udp-size <integer>;
         max-zone-ttl ( unlimited | <duration> );
         message-compression <boolean>;
@@ -748,12 +752,14 @@ view <string> [ <class> ] {
                     port <integer> ] ) [ key <string> ]; ... };
                 max-journal-size ( default | unlimited | <sizeval> );
                 max-records <integer>;
+                max-records-per-type <integer>;
                 max-refresh-time <integer>;
                 max-retry-time <integer>;
                 max-transfer-idle-in <integer>;
                 max-transfer-idle-out <integer>;
                 max-transfer-time-in <integer>;
                 max-transfer-time-out <integer>;
+                max-types-per-name <integer>;
                 max-zone-ttl ( unlimited | <duration> );
                 min-refresh-time <integer>;
                 min-retry-time <integer>;
@@ -845,12 +851,14 @@ zone <string> [ <class> ] {
             <integer> ] ) [ key <string> ]; ... };
         max-journal-size ( default | unlimited | <sizeval> );
         max-records <integer>;
+        max-records-per-type <integer>;
         max-refresh-time <integer>;
         max-retry-time <integer>;
         max-transfer-idle-in <integer>;
         max-transfer-idle-out <integer>;
         max-transfer-time-in <integer>;
         max-transfer-time-out <integer>;
+        max-types-per-name <integer>;
         max-zone-ttl ( unlimited | <duration> );
         min-refresh-time <integer>;
         min-retry-time <integer>;

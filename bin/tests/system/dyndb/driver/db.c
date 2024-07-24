@@ -590,7 +590,9 @@ static dns_dbmethods_t sampledb_methods = {
 	NULL, /* setservestalettl */
 	NULL, /* getservestalettl */
 	NULL, /* setgluecachestats */
-	NULL  /* adjusthashsize */
+	NULL, /* adjusthashsize */
+	NULL, /* setmaxrrperset */
+	NULL  /* setmaxtypepername */
 };
 
 /* Auxiliary driver functions. */

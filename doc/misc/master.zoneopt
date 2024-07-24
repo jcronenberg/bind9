@@ -37,8 +37,10 @@ zone <string> [ <class> ] {
 	masterfile-style ( full | relative );
 	max-journal-size ( default | unlimited | <sizeval> );
 	max-records <integer>;
+	max-records-per-type <integer>;
 	max-transfer-idle-out <integer>;
 	max-transfer-time-out <integer>;
+	max-types-per-name <integer>;
 	max-zone-ttl ( unlimited | <duration> );
 	notify ( explicit | master-only | <boolean> );
 	notify-delay <integer>;

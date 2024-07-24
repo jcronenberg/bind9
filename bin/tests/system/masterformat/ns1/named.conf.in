@@ -20,6 +20,8 @@ options {
 	notify no;
 	session-keyfile "session.key";
 	servfail-ttl 0;
+	max-records-per-type 2050;
+	max-types-per-name 500;
 };
 
 key rndc_key {
@@ -68,9 +70,31 @@ zone "transfer4" {
 };
 
 
-zone "large" {
+zone "under-limit" {
 	type master;
-	file "large.db.raw";
+	file "under-limit.db.raw";
+	masterfile-format raw;
+	allow-transfer { any; };
+};
+
+zone "on-limit" {
+	type master;
+	file "on-limit.db.raw";
+	masterfile-format raw;
+	allow-transfer { any; };
+};
+
+
+zone "over-limit" {
+	type master;
+	file "over-limit.db.raw";
+	masterfile-format raw;
+	allow-transfer { any; };
+};
+
+zone "255types" {
+	type master;
+	file "255types.db.raw";
 	masterfile-format raw;
 	allow-transfer { any; };
 };

@@ -20,6 +20,7 @@ options {
 	recursion no;
 	notify yes;
 	minimal-responses no;
+	max-records-per-type 0;
 };
 
 zone "." {

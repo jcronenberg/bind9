@@ -20,6 +20,18 @@ options {
 	listen-on-v6 { none; };
 	recursion no;
 	dnssec-validation no;
+	max-records-per-type 0;
+	max-types-per-name 0;
 };
 
 zone "." { type master; file "root.db"; };
+
+zone "big." {
+	type master;
+	file "big.db";
+};
+
+zone "signed." {
+	type master;
+	file "signed.db.signed";
+};

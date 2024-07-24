@@ -1282,7 +1282,9 @@ static dns_dbmethods_t sdlzdb_methods = {
 	NULL, /* setservestalettl */
 	NULL, /* getservestalettl */
 	NULL, /* setgluecachestats */
-	NULL  /* adjusthashsize */
+	NULL, /* adjusthashsize */
+	NULL, /* setmaxrrperset */
+	NULL  /* setmaxtypepername */
 };
 
 /*

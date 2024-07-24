@@ -184,7 +184,9 @@ struct dns_view {
 	dns_dlzdblist_t	  dlz_searched;
 	dns_dlzdblist_t	  dlz_unsearched;
 	uint32_t	  fail_ttl;
-	dns_badcache_t *  failcache;
+	dns_badcache_t	 *failcache;
+	uint32_t	  maxrrperset;
+	uint32_t	  maxtypepername;
 
 	/*
 	 * Configurable data for server use only,
@@ -1327,6 +1329,27 @@ dns_view_setviewrevert(dns_view_t *view);
  *
  * Requires:
  *\li	'view' to be valid.
+ */
+
+bool
+dns_view_staleanswerenabled(dns_view_t *view);
+/*%<
+ * Check if stale answers are enabled for this view.
+ *
+ * Requires:
+ *\li	'view' to be valid.
+ */
+
+void
+dns_view_setmaxrrperset(dns_view_t *view, uint32_t value);
+/*%<
+ * Set the maximum resource records per RRSet that can be cached.
+ */
+
+void
+dns_view_setmaxtypepername(dns_view_t *view, uint32_t value);
+/*%<
+ * Set the maximum resource record types per owner name that can be cached.
  */
 
 ISC_LANG_ENDDECLS

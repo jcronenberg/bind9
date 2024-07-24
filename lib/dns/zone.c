@@ -254,6 +254,8 @@ struct dns_zone {
 	uint32_t minretry;
 
 	uint32_t maxrecords;
+	uint32_t maxrrperset;
+	uint32_t maxtypepername;
 
 	isc_sockaddr_t *masters;
 	isc_dscp_t *masterdscps;
@@ -2194,30 +2196,12 @@ zone_load(dns_zone_t *zone, unsigned int flags, bool locked) {
 	dns_zone_logc(zone, DNS_LOGCATEGORY_ZONELOAD, ISC_LOG_DEBUG(1),
 		      "starting load");
 
-	result = dns_db_create(zone->mctx, zone->db_argv[0], &zone->origin,
-			       (zone->type == dns_zone_stub) ? dns_dbtype_stub
-							     : dns_dbtype_zone,
-			       zone->rdclass, zone->db_argc - 1,
-			       zone->db_argv + 1, &db);
-
+	result = dns_zone_makedb(zone, &db);
 	if (result != ISC_R_SUCCESS) {
 		dns_zone_logc(zone, DNS_LOGCATEGORY_ZONELOAD, ISC_LOG_ERROR,
 			      "loading zone: creating database: %s",
 			      isc_result_totext(result));
 		goto cleanup;
-	}
-	dns_db_settask(db, zone->task);
-
-	if (zone->type == dns_zone_master || zone->type == dns_zone_slave ||
-	    zone->type == dns_zone_mirror)
-	{
-		result = dns_db_setgluecachestats(db, zone->gluecachestats);
-		if (result == ISC_R_NOTIMPLEMENTED) {
-			result = ISC_R_SUCCESS;
-		}
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
 	}
 
 	if (!dns_db_ispersistent(db)) {
@@ -9633,6 +9617,7 @@ cleanup:
 	}
 
 	dns_diff_clear(&_sig_diff);
+	dns_diff_clear(&post_diff);
 
 	for (i = 0; i < nkeys; i++) {
 		dst_key_free(&zone_keys[i]);
@@ -11716,6 +11701,26 @@ dns_zone_setmaxrecords(dns_zone_t *zone, uint32_t val) {
 	zone->maxrecords = val;
 }
 
+void
+dns_zone_setmaxrrperset(dns_zone_t *zone, uint32_t val) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+
+	zone->maxrrperset = val;
+	if (zone->db != NULL) {
+		dns_db_setmaxrrperset(zone->db, val);
+	}
+}
+
+void
+dns_zone_setmaxtypepername(dns_zone_t *zone, uint32_t val) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+
+	zone->maxtypepername = val;
+	if (zone->db != NULL) {
+		dns_db_setmaxtypepername(zone->db, val);
+	}
+}
+
 static bool
 notify_isqueued(dns_zone_t *zone, unsigned int flags, dns_name_t *name,
 		isc_sockaddr_t *addr, dns_tsigkey_t *key) {
@@ -13727,6 +13732,9 @@ ns_query(dns_zone_t *zone, dns_rdataset_t *soardataset, dns_stub_t *stub) {
 				goto cleanup;
 			}
 			dns_db_settask(stub->db, zone->task);
+			dns_db_setmaxrrperset(stub->db, zone->maxrrperset);
+			dns_db_setmaxtypepername(stub->db,
+						 zone->maxtypepername);
 		}
 
 		result = dns_db_newversion(stub->db, &stub->version);
@@ -16412,6 +16420,8 @@ zone_replacedb(dns_zone_t *zone, dns_db_t *db, bool dump) {
 	}
 	zone_attachdb(zone, db);
 	dns_db_settask(zone->db, zone->task);
+	dns_db_setmaxrrperset(zone->db, zone->maxrrperset);
+	dns_db_setmaxtypepername(zone->db, zone->maxtypepername);
 	DNS_ZONE_SETFLAG(zone, DNS_ZONEFLG_LOADED | DNS_ZONEFLG_NEEDNOTIFY);
 	return (ISC_R_SUCCESS);
 
@@ -20990,4 +21000,46 @@ done:
 	}
 
 	return (result);
+}
+
+isc_result_t
+dns_zone_makedb(dns_zone_t *zone, dns_db_t **dbp) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+	REQUIRE(dbp != NULL && *dbp == NULL);
+
+	dns_db_t *db = NULL;
+
+	isc_result_t result = dns_db_create(
+		zone->mctx, zone->db_argv[0], &zone->origin,
+		(zone->type == dns_zone_stub) ? dns_dbtype_stub
+					      : dns_dbtype_zone,
+		zone->rdclass, zone->db_argc - 1, zone->db_argv + 1, &db);
+	if (result != ISC_R_SUCCESS) {
+		return (result);
+	}
+
+	switch (zone->type) {
+	case dns_zone_master:
+	case dns_zone_slave:
+	case dns_zone_mirror:
+		result = dns_db_setgluecachestats(db, zone->gluecachestats);
+		if (result == ISC_R_NOTIMPLEMENTED) {
+			result = ISC_R_SUCCESS;
+		}
+		if (result != ISC_R_SUCCESS) {
+			dns_db_detach(&db);
+			return (result);
+		}
+		break;
+	default:
+		break;
+	}
+
+	dns_db_settask(db, zone->task);
+	dns_db_setmaxrrperset(db, zone->maxrrperset);
+	dns_db_setmaxtypepername(db, zone->maxtypepername);
+
+	*dbp = db;
+
+	return (ISC_R_SUCCESS);
 }

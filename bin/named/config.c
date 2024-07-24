@@ -227,8 +227,10 @@ options {\n\
 #	max-ixfr-log-size <obsolete>\n\
 	max-journal-size default;\n\
 	max-records 0;\n\
+	max-records-per-type 100;\n\
 	max-refresh-time 2419200; /* 4 weeks */\n\
 	max-retry-time 1209600; /* 2 weeks */\n\
+	max-types-per-name 100;\n\
 	max-transfer-idle-in 60;\n\
 	max-transfer-idle-out 60;\n\
 	max-transfer-time-in 120;\n\
