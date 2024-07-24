@@ -442,14 +442,10 @@ misc:
   <<: *precheck_job
   script:
     - sh util/check-ans-prereq.sh
-    - sh util/checklibs.sh > checklibs.out
     - xmllint --noout --nonet `git ls-files '*.xml' '*.docbook'`
-    - sh util/check-win32util-configure
     - sh util/check-categories.sh
     - sh util/xmllint-html.sh
   artifacts:
-    paths:
-      - checklibs.out
     when: on_failure
 
 changes:
@@ -733,7 +729,7 @@ gcc:oraclelinux9:amd64:
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "--with-libidn2 --disable-developer"
+    EXTRA_CONFIGURE: "--with-libidn2"
   <<: *oraclelinux_9_amd64_image
   <<: *build_job
 
