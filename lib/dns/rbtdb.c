@@ -1127,6 +1127,44 @@ set_ttl(dns_rbtdb_t *rbtdb, rdatasetheader_t *header, dns_ttl_t newttl) {
 		isc_heap_decreased(heap, header->heap_index);
 }
 
+static bool
+prio_type(rbtdb_rdatatype_t type) {
+	switch (type) {
+	case dns_rdatatype_soa:
+	case RBTDB_RDATATYPE_VALUE(dns_rdatatype_rrsig, dns_rdatatype_soa):
+	case dns_rdatatype_a:
+	case RBTDB_RDATATYPE_VALUE(dns_rdatatype_rrsig, dns_rdatatype_a):
+	case dns_rdatatype_mx:
+	case RBTDB_RDATATYPE_VALUE(dns_rdatatype_rrsig, dns_rdatatype_mx):
+	case dns_rdatatype_aaaa:
+	case RBTDB_RDATATYPE_VALUE(dns_rdatatype_rrsig, dns_rdatatype_aaaa):
+	case dns_rdatatype_nsec:
+	case RBTDB_RDATATYPE_VALUE(dns_rdatatype_rrsig, dns_rdatatype_nsec):
+	case dns_rdatatype_nsec3:
+	case RBTDB_RDATATYPE_VALUE(dns_rdatatype_rrsig, dns_rdatatype_nsec3):
+	case dns_rdatatype_ns:
+	case RBTDB_RDATATYPE_VALUE(dns_rdatatype_rrsig, dns_rdatatype_ns):
+	case dns_rdatatype_ds:
+	case RBTDB_RDATATYPE_VALUE(dns_rdatatype_rrsig, dns_rdatatype_ds):
+	case dns_rdatatype_cname:
+	case RBTDB_RDATATYPE_VALUE(dns_rdatatype_rrsig, dns_rdatatype_cname):
+	case dns_rdatatype_dname:
+	case RBTDB_RDATATYPE_VALUE(dns_rdatatype_rrsig, dns_rdatatype_dname):
+	case dns_rdatatype_dnskey:
+	case RBTDB_RDATATYPE_VALUE(dns_rdatatype_rrsig, dns_rdatatype_dnskey):
+	case dns_rdatatype_srv:
+	case RBTDB_RDATATYPE_VALUE(dns_rdatatype_rrsig, dns_rdatatype_srv):
+	case dns_rdatatype_txt:
+	case RBTDB_RDATATYPE_VALUE(dns_rdatatype_rrsig, dns_rdatatype_txt):
+	case dns_rdatatype_ptr:
+	case RBTDB_RDATATYPE_VALUE(dns_rdatatype_rrsig, dns_rdatatype_ptr):
+	case dns_rdatatype_naptr:
+	case RBTDB_RDATATYPE_VALUE(dns_rdatatype_rrsig, dns_rdatatype_naptr):
+		return (true);
+	}
+	return (false);
+}
+
 /*%
  * These functions allow the heap code to rank the priority of each
  * element.  It returns true if v1 happens "sooner" than v2.
@@ -6127,6 +6165,30 @@ update_recordsandbytes(bool add, rbtdb_version_t *rbtversion,
 	RWUNLOCK(&rbtversion->rwlock, isc_rwlocktype_write);
 }
 
+#ifndef DNS_RBTDB_MAX_RTYPES
+#define DNS_RBTDB_MAX_RTYPES 100
+#endif /* DNS_RBTDB_MAX_RTYPES */
+
+static bool
+overmaxtype(dns_rbtdb_t *rbtdb, uint32_t ntypes) {
+	UNUSED(rbtdb);
+
+	if (DNS_RBTDB_MAX_RTYPES == 0) {
+		return (false);
+	}
+
+	return (ntypes >= DNS_RBTDB_MAX_RTYPES);
+}
+
+static bool
+prio_header(rdatasetheader_t *header) {
+	if (NEGATIVE(header) && prio_type(RBTDB_RDATATYPE_EXT(header->type))) {
+		return (true);
+	}
+
+	return (prio_type(header->type));
+}
+
 /*
  * write lock on rbtnode must be held.
  */
@@ -6137,6 +6199,7 @@ add32(dns_rbtdb_t *rbtdb, dns_rbtnode_t *rbtnode, rbtdb_version_t *rbtversion,
 {
 	rbtdb_changed_t *changed = NULL;
 	rdatasetheader_t *topheader, *topheader_prev, *header, *sigheader;
+	rdatasetheader_t *prioheader = NULL, *expireheader = NULL;
 	unsigned char *merged;
 	isc_result_t result;
 	bool header_nx;
@@ -6146,6 +6209,7 @@ add32(dns_rbtdb_t *rbtdb, dns_rbtnode_t *rbtnode, rbtdb_version_t *rbtversion,
 	rbtdb_rdatatype_t negtype, sigtype;
 	dns_trust_t trust;
 	int idx;
+	uint32_t ntypes = 0;
 
 	/*
 	 * Add an rdatasetheader_t to a node.
@@ -6278,6 +6342,15 @@ add32(dns_rbtdb_t *rbtdb, dns_rbtnode_t *rbtnode, rbtdb_version_t *rbtversion,
 	for (topheader = rbtnode->data;
 	     topheader != NULL;
 	     topheader = topheader->next) {
+		if (IS_CACHE(rbtdb) && ACTIVE(topheader, now)) {
+			++ntypes;
+			expireheader = topheader;
+		} else if (!IS_CACHE(rbtdb)) {
+			++ntypes;
+		}
+		if (prio_header(topheader)) {
+			prioheader = topheader;
+		}
 		if (topheader->type == newheader->type ||
 		    topheader->type == negtype)
 			break;
@@ -6633,9 +6706,46 @@ add32(dns_rbtdb_t *rbtdb, dns_rbtnode_t *rbtnode, rbtdb_version_t *rbtversion,
 			/*
 			 * No rdatasets of the given type exist at the node.
 			 */
-			newheader->next = rbtnode->data;
+			if (!IS_CACHE(rbtdb) && overmaxtype(rbtdb, ntypes)) {
+				free_rdataset(rbtdb, rbtdb->common.mctx,
+					      newheader);
+				return (ISC_R_QUOTA);
+			}
+
 			newheader->down = NULL;
-			rbtnode->data = newheader;
+
+			if (prio_header(newheader)) {
+				/* This is a priority type, prepend it */
+				newheader->next = rbtnode->data;
+				rbtnode->data = newheader;
+			} else if (prioheader != NULL) {
+				/* Append after the priority headers */
+				newheader->next = prioheader->next;
+				prioheader->next = newheader;
+			} else {
+				/* There were no priority headers */
+				newheader->next = rbtnode->data;
+				rbtnode->data = newheader;
+			}
+
+			if (IS_CACHE(rbtdb) && overmaxtype(rbtdb, ntypes)) {
+				if (expireheader == NULL) {
+					expireheader = newheader;
+				}
+				if (NEGATIVE(newheader) &&
+				    !prio_header(newheader))
+				{
+					/*
+					 * Add the new non-priority negative
+					 * header to the database only
+					 * temporarily.
+					 */
+					expireheader = newheader;
+				}
+
+				set_ttl(rbtdb, expireheader, 0);
+				mark_stale_header(rbtdb, expireheader);
+			}
 		}
 	}
 

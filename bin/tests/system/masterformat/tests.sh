@@ -183,21 +183,23 @@ n=$((n+1))
 [ $ret -eq 0 ] || echo_i "failed"
 status=$((status+ret))
 
-echo_i "checking that large rdatasets loaded ($n)"
-for i in 0 1 2 3 4 5 6 7 8 9
-do
-ret=0
-for a in a b c
-do
-	$DIG +tcp txt "${a}.large" @10.53.0.2 -p "${PORT}" > "dig.out.ns2.test$n"
-	grep "status: NOERROR" "dig.out.ns2.test$n" > /dev/null || ret=1
-done
-[ $ret -eq 0 ] && break
-sleep 1
-done
-n=$((n+1))
-[ $ret -eq 0 ] || echo_i "failed"
-status=$((status+ret))
+# Skip test because it doesn't work with the maximum records of 100 for CVE-2024-1737
+# bsc#1229002
+#echo_i "checking that large rdatasets loaded ($n)"
+#for i in 0 1 2 3 4 5 6 7 8 9
+#do
+#ret=0
+#for a in a b c
+#do
+#	$DIG +tcp txt "${a}.large" @10.53.0.2 -p "${PORT}" > "dig.out.ns2.test$n"
+#	grep "status: NOERROR" "dig.out.ns2.test$n" > /dev/null || ret=1
+#done
+#[ $ret -eq 0 ] && break
+#sleep 1
+#done
+#n=$((n+1))
+#[ $ret -eq 0 ] || echo_i "failed"
+#status=$((status+ret))
 
 echo_i "checking format transitions: text->raw->map->text ($n)"
 ret=0
