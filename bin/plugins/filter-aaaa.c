@@ -355,7 +355,7 @@ plugin_register(const char *parameters, const void *cfg, const char *cfg_file,
 	}
 
 	isc_mempool_create(mctx, sizeof(filter_data_t), &inst->datapool);
-	CHECK(isc_ht_init(&inst->ht, mctx, 16));
+	CHECK(isc_ht_init(&inst->ht, mctx, 16, ISC_HT_CASE_SENSITIVE));
 	isc_mutex_init(&inst->hlock);
 
 	/*

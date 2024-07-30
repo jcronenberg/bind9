@@ -1546,7 +1546,7 @@ dns_rpz_new_zone(dns_rpz_zones_t *rpzs, dns_rpz_zone_t **rpzp) {
 	 * simplifies update_from_db
 	 */
 
-	result = isc_ht_init(&zone->nodes, rpzs->mctx, 1);
+	result = isc_ht_init(&zone->nodes, rpzs->mctx, 1, ISC_HT_CASE_SENSITIVE);
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup_ht;
 	}
@@ -1729,7 +1729,8 @@ setup_update(dns_rpz_zone_t *rpz) {
 		      ISC_LOG_DEBUG(1), "rpz: %s: using hashtable size %d",
 		      domain, hashsize);
 
-	result = isc_ht_init(&rpz->newnodes, rpz->rpzs->mctx, hashsize);
+	result = isc_ht_init(&rpz->newnodes, rpz->rpzs->mctx, hashsize,
+		    ISC_HT_CASE_SENSITIVE);
 	if (result != ISC_R_SUCCESS) {
 		isc_log_write(dns_lctx, DNS_LOGCATEGORY_GENERAL,
 			      DNS_LOGMODULE_MASTER, ISC_LOG_ERROR,
