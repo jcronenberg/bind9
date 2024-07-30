@@ -132,6 +132,9 @@
 
 #define REDIRECT(c) (((c)->query.attributes & NS_QUERYATTR_REDIRECT) != 0)
 
+/*% Was the query already answered due to stale-answer-client-timeout? */
+#define QUERY_ANSWERED(q) (((q)->attributes & NS_QUERYATTR_ANSWERED) != 0)
+
 /*% Does the rdataset 'r' have an attached 'No QNAME Proof'? */
 #define NOQNAME(r) (((r)->attributes & DNS_RDATASETATTR_NOQNAME) != 0)
 
@@ -7430,10 +7433,17 @@ query_respond(query_ctx_t *qctx) {
 	query_addnoqnameproof(qctx);
 
 	/*
-	 * We shouldn't ever fail to add 'rdataset'
-	 * because it's already in the answer.
+	 * 'qctx->rdataset' will only be non-NULL here if the ANSWER section of
+	 * the message to be sent to the client already contains an RRset with
+	 * the same owner name and the same type as 'qctx->rdataset'.  This
+	 * should never happen, with one exception: when chasing DNAME records,
+	 * one of the DNAME records placed in the ANSWER section may turn out
+	 * to be the final answer to the client's query, but we have no way of
+	 * knowing that until now.  In such a case, 'qctx->rdataset' will be
+	 * freed later, so we do not need to free it here.
 	 */
-	INSIST(qctx->rdataset == NULL);
+	INSIST(qctx->rdataset == NULL || qctx->qtype == dns_rdatatype_dname ||
+	       QUERY_ANSWERED(&qctx->client->query));
 
 	query_addauth(qctx);
 

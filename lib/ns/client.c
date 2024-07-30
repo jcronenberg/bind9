@@ -410,6 +410,11 @@ ns_client_send(ns_client_t *client) {
 	 */
 
 	REQUIRE(NS_CLIENT_VALID(client));
+
+	if ((client->query.attributes & NS_QUERYATTR_ANSWERED) != 0) {
+		return;
+	}
+
 	/*
 	 * We need to do it to make sure the client and handle
 	 * won't disappear from under us with client_senddone.
@@ -670,6 +675,7 @@ renderend:
 	}
 
 	if (result == ISC_R_SUCCESS) {
+		client->query.attributes |= NS_QUERYATTR_ANSWERED;
 		return;
 	}
 
@@ -2316,6 +2322,7 @@ ns__client_setup(ns_client_t *client, ns_clientmgr_t *mgr, bool new) {
 					 .query = query };
 	}
 
+	client->query.attributes &= ~NS_QUERYATTR_ANSWERED;
 	client->state = NS_CLIENTSTATE_INACTIVE;
 	client->udpsize = 512;
 	client->ednsversion = -1;
