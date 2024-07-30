@@ -105,7 +105,9 @@ enum { ns_statscounter_requestv4 = 0,
 
        ns_statscounter_reclimitdropped = 66,
 
-       ns_statscounter_max = 67,
+       ns_statscounter_updatequota = 67,
+
+       ns_statscounter_max = 68,
 };
 
 void
