@@ -57,9 +57,9 @@
 #include <dlz_pthread.h>
 
 #include <mysql/mysql.h>
-#if !defined(LIBMARIADB) && MYSQL_VERSION_ID >= 80000
+#if !defined(LIBMARIADB) && MYSQL_VERSION_ID >= 110000
 typedef bool my_bool;
-#endif /* !defined(LIBMARIADB) && MYSQL_VERSION_ID >= 80000 */
+#endif /* !defined(LIBMARIADB) && MYSQL_VERSION_ID >= 110000 */
 
 #define dbc_search_limit 30
 #define ALLNODES 1

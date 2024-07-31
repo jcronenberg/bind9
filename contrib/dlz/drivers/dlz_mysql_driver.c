@@ -66,9 +66,9 @@
 
 #include <mysql.h>
 
-#if !defined(LIBMARIADB) && MYSQL_VERSION_ID >= 80000
+#if !defined(LIBMARIADB) && MYSQL_VERSION_ID >= 110000
 typedef bool my_bool;
-#endif /* !defined(LIBMARIADB) && MYSQL_VERSION_ID >= 80000 */
+#endif /* !defined(LIBMARIADB) && MYSQL_VERSION_ID >= 110000 */
 
 static dns_sdlzimplementation_t *dlz_mysql = NULL;
 
