@@ -340,20 +340,6 @@ static dst_func_t hmacmd5_functions = {
 
 isc_result_t
 dst__hmacmd5_init(dst_func_t **funcp) {
-#ifdef HAVE_FIPS_MODE
-	/*
-	 * Problems from OpenSSL are likely from FIPS mode
-	 */
-	int fips_mode = FIPS_mode();
-
-	if (fips_mode != 0) {
-		UNEXPECTED_ERROR(__FILE__, __LINE__,
-				 "FIPS mode is %d: MD5 is only supported "
-				 "if the value is 0.\n"
-				 "Please disable either FIPS mode or MD5.",
-				 fips_mode);
-	}
-#endif
 
 #if PK11_FLAVOR != PK11_UTIMACO_FLAVOR
 	/*
@@ -366,6 +352,14 @@ dst__hmacmd5_init(dst_func_t **funcp) {
 	REQUIRE(funcp != NULL);
 	if (*funcp == NULL)
 		*funcp = &hmacmd5_functions;
+
+#ifdef HAVE_FIPS_MODE
+	int fips_mode = FIPS_mode();
+	if (fips_mode != 0) {
+		*funcp = NULL;
+	}
+#endif
+
 	return (ISC_R_SUCCESS);
 }
 #endif
