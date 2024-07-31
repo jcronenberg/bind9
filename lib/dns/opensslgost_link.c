@@ -583,9 +583,16 @@ dst__opensslgost_init(dst_func_t **funcp) {
 
 	/* check if the gost engine works properly */
 	e = ENGINE_by_id("gost");
-	if (e == NULL)
+	if (e == NULL) {
+		/* In FIPS mode we cannot get the gost engine, even if
+		 * openssl and bind was originally built with it. */
+#if 0	
 		return (dst__openssl_toresult2("ENGINE_by_id",
 					       DST_R_OPENSSLFAILURE));
+#endif
+		return (ISC_R_SUCCESS);
+	}
+
 	if (ENGINE_init(e) <= 0) {
 		ENGINE_free(e);
 		e = NULL;
