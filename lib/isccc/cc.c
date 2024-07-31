@@ -53,6 +53,10 @@
 
 #define MAX_TAGS		256
 #define DUP_LIFETIME		900
+#ifndef ISCCC_MAXDEPTH
+#define ISCCC_MAXDEPTH \
+	10 /* Big enough for rndc which just sends a string each way. */
+#endif
 
 typedef isccc_sexpr_t *sexpr_ptr;
 
@@ -561,18 +565,25 @@ verify(isccc_sexpr_t *alist, unsigned char *data, unsigned int length,
 
 static isc_result_t
 table_fromwire(isccc_region_t *source, isccc_region_t *secret,
-	       uint32_t algorithm, isccc_sexpr_t **alistp);
+	       uint32_t algorithm, unsigned int depth, isccc_sexpr_t **alistp);
 
 static isc_result_t
-list_fromwire(isccc_region_t *source, isccc_sexpr_t **listp);
+list_fromwire(isccc_region_t *source, unsigned int depth,
+	      isccc_sexpr_t **listp);
 
 static isc_result_t
-value_fromwire(isccc_region_t *source, isccc_sexpr_t **valuep) {
+value_fromwire(isccc_region_t *source, unsigned int depth,
+	       isccc_sexpr_t **valuep)
+{
 	unsigned int msgtype;
 	uint32_t len;
 	isccc_sexpr_t *value;
 	isccc_region_t active;
 	isc_result_t result;
+
+	if (depth > ISCCC_MAXDEPTH) {
+		return (ISCCC_R_MAXDEPTH);
+	}
 
 	if (REGION_SIZE(*source) < 1 + 4)
 		return (ISC_R_UNEXPECTEDEND);
@@ -591,9 +602,9 @@ value_fromwire(isccc_region_t *source, isccc_sexpr_t **valuep) {
 		} else
 			result = ISC_R_NOMEMORY;
 	} else if (msgtype == ISCCC_CCMSGTYPE_TABLE)
-		result = table_fromwire(&active, NULL, 0, valuep);
+		result = table_fromwire(&active, NULL, 0, depth + 1, valuep);
 	else if (msgtype == ISCCC_CCMSGTYPE_LIST)
-		result = list_fromwire(&active, valuep);
+		result = list_fromwire(&active, depth + 1, valuep);
 	else
 		result = ISCCC_R_SYNTAX;
 
@@ -602,7 +613,7 @@ value_fromwire(isccc_region_t *source, isccc_sexpr_t **valuep) {
 
 static isc_result_t
 table_fromwire(isccc_region_t *source, isccc_region_t *secret,
-	       uint32_t algorithm, isccc_sexpr_t **alistp)
+	       uint32_t algorithm, unsigned int depth, isccc_sexpr_t **alistp)
 {
 	char key[256];
 	uint32_t len;
@@ -612,6 +623,10 @@ table_fromwire(isccc_region_t *source, isccc_region_t *secret,
 	unsigned char *checksum_rstart;
 
 	REQUIRE(alistp != NULL && *alistp == NULL);
+
+	if (depth > ISCCC_MAXDEPTH) {
+		return (ISCCC_R_MAXDEPTH);
+	}
 
 	checksum_rstart = NULL;
 	first_tag = true;
@@ -628,7 +643,7 @@ table_fromwire(isccc_region_t *source, isccc_region_t *secret,
 		GET_MEM(key, len, source->rstart);
 		key[len] = '\0';	/* Ensure NUL termination. */
 		value = NULL;
-		result = value_fromwire(source, &value);
+		result = value_fromwire(source, depth + 1, &value);
 		if (result != ISC_R_SUCCESS)
 			goto bad;
 		if (isccc_alist_define(alist, key, value) == NULL) {
@@ -661,14 +676,20 @@ table_fromwire(isccc_region_t *source, isccc_region_t *secret,
 }
 
 static isc_result_t
-list_fromwire(isccc_region_t *source, isccc_sexpr_t **listp) {
+list_fromwire(isccc_region_t *source, unsigned int depth,
+	      isccc_sexpr_t **listp)
+{
 	isccc_sexpr_t *list, *value;
 	isc_result_t result;
+
+	if (depth > ISCCC_MAXDEPTH) {
+		return (ISCCC_R_MAXDEPTH);
+	}
 
 	list = NULL;
 	while (!REGION_EMPTY(*source)) {
 		value = NULL;
-		result = value_fromwire(source, &value);
+		result = value_fromwire(source, depth + 1, &value);
 		if (result != ISC_R_SUCCESS) {
 			isccc_sexpr_free(&list);
 			return (result);
@@ -699,7 +720,7 @@ isccc_cc_fromwire(isccc_region_t *source, isccc_sexpr_t **alistp,
 	if (version != 1)
 		return (ISCCC_R_UNKNOWNVERSION);
 
-	return (table_fromwire(source, secret, algorithm, alistp));
+	return (table_fromwire(source, secret, algorithm, 0, alistp));
 }
 
 static isc_result_t
