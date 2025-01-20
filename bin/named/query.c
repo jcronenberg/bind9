@@ -1803,7 +1803,8 @@ query_addadditional(void *arg, dns_name_t *name, dns_rdatatype_t qtype) {
 		 */
 		eresult = dns_rdataset_additionaldata(trdataset,
 						      query_addadditional,
-						      client);
+						      client,
+						      DNS_RDATASET_MAXADDITIONAL);
 	}
 
  cleanup:
@@ -2398,7 +2399,7 @@ query_addrdataset(ns_client_t *client, dns_name_t *fname,
 						       rdataset->rdclass);
 	rdataset->attributes |= DNS_RDATASETATTR_LOADORDER;
 
-	if (NOADDITIONAL(client))
+	if (NOADDITIONAL(client) || client->query.qtype == dns_rdatatype_any)
 		return;
 
 	/*
@@ -2409,7 +2410,8 @@ query_addrdataset(ns_client_t *client, dns_name_t *fname,
 	additionalctx.client = client;
 	additionalctx.rdataset = rdataset;
 	(void)dns_rdataset_additionaldata(rdataset, query_addadditional2,
-					  &additionalctx);
+					  &additionalctx,
+					  DNS_RDATASET_MAXADDITIONAL);
 	CTRACE(ISC_LOG_DEBUG(3), "query_addrdataset: done");
 }
 
