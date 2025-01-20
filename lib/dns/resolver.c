@@ -8739,8 +8739,7 @@ rctx_answer_any(respctx_t *rctx) {
 		rdataset->attributes |= DNS_RDATASETATTR_CACHE;
 		rdataset->trust = rctx->trust;
 
-		(void)dns_rdataset_additionaldata(rdataset, check_related,
-						  fctx);
+		(void)dns_rdataset_additionaldata(rdataset, check_related, fctx, 0);
 	}
 
 	return (ISC_R_SUCCESS);
@@ -8787,7 +8786,7 @@ rctx_answer_match(respctx_t *rctx) {
 	rctx->ardataset->attributes |= DNS_RDATASETATTR_ANSWER;
 	rctx->ardataset->attributes |= DNS_RDATASETATTR_CACHE;
 	rctx->ardataset->trust = rctx->trust;
-	(void)dns_rdataset_additionaldata(rctx->ardataset, check_related, fctx);
+	(void)dns_rdataset_additionaldata(rctx->ardataset, check_related, fctx, 0);
 
 	for (sigrdataset = ISC_LIST_HEAD(rctx->aname->list);
 	     sigrdataset != NULL;
@@ -8992,7 +8991,7 @@ rctx_authority_positive(respctx_t *rctx) {
 					 * to this rdataset.
 					 */
 					(void)dns_rdataset_additionaldata(
-						rdataset, check_related, fctx);
+						rdataset, check_related, fctx, 0);
 					done = true;
 				}
 			}
@@ -9493,8 +9492,10 @@ rctx_referral(respctx_t *rctx) {
 	 */
 	INSIST(rctx->ns_rdataset != NULL);
 	FCTX_ATTR_SET(fctx, FCTX_ATTR_GLUING);
-	(void)dns_rdataset_additionaldata(rctx->ns_rdataset, check_related,
-					  fctx);
+	/*
+	 * Mark the glue records in the additional section to be cached.
+	 */
+	(void)dns_rdataset_additionaldata(rctx->ns_rdataset, check_related, fctx, 0);
 #if CHECK_FOR_GLUE_IN_ANSWER
 	/*
 	 * Look in the answer section for "glue" that is incorrectly
@@ -9507,7 +9508,7 @@ rctx_referral(respctx_t *rctx) {
 	    (fctx->type == dns_rdatatype_aaaa || fctx->type == dns_rdatatype_a))
 	{
 		(void)dns_rdataset_additionaldata(rctx->ns_rdataset,
-						  check_answer, fctx);
+						  check_answer, fctx, 0);
 	}
 #endif /* if CHECK_FOR_GLUE_IN_ANSWER */
 	FCTX_ATTR_CLR(fctx, FCTX_ATTR_GLUING);
@@ -9618,7 +9619,7 @@ again:
 			if (CHASE(rdataset)) {
 				rdataset->attributes &= ~DNS_RDATASETATTR_CHASE;
 				(void)dns_rdataset_additionaldata(
-					rdataset, check_related, fctx);
+					rdataset, check_related, fctx, 0);
 				rescan = true;
 			}
 		}

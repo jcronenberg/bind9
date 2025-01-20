@@ -10639,7 +10639,7 @@ no_glue:
 		      rbtversion->glue_table_size;
 	}
 
-	(void)dns_rdataset_additionaldata(rdataset, glue_nsdname_cb, &ctx);
+	(void)dns_rdataset_additionaldata(rdataset, glue_nsdname_cb, &ctx, 0);
 
 	cur = isc_mem_get(rbtdb->common.mctx, sizeof(*cur));
 

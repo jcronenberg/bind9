@@ -290,7 +290,11 @@ done
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=`expr $status + $ret`
 
-n=`expr $n + 1`
+stop_server ns4
+touch ns4/named.noaa
+start_server --noclean --restart --port ${PORT} ns4 || ret=1
+
+n=$((n + 1))
 echo_i "RT21594 regression test check setup ($n)"
 ret=0
 # Check that "aa" is not being set by the authoritative server.
@@ -326,7 +330,11 @@ grep "status: NXDOMAIN" dig.ns5.out.${n} > /dev/null || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=`expr $status + $ret`
 
-n=`expr $n + 1`
+stop_server ns4
+rm ns4/named.noaa
+start_server --noclean --restart --port ${PORT} ns4 || ret=1
+
+n=$((n + 1))
 echo_i "check that replacement of additional data by a negative cache no data entry clears the additional RRSIGs ($n)"
 ret=0
 $DIG $DIGOPTS +tcp mx example.net @10.53.0.7 > dig.ns7.out.${n} || ret=1
