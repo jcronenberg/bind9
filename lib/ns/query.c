@@ -2048,7 +2048,8 @@ addname:
 	 */
 	if (trdataset != NULL && dns_rdatatype_followadditional(type)) {
 		eresult = dns_rdataset_additionaldata(
-			trdataset, query_additional_cb, qctx);
+			trdataset, query_additional_cb, qctx,
+			DNS_RDATASET_MAXADDITIONAL);
 	}
 
 cleanup:
@@ -2139,7 +2140,8 @@ regular:
 	 * Add other additional data if needed.
 	 * We don't care if dns_rdataset_additionaldata() fails.
 	 */
-	(void)dns_rdataset_additionaldata(rdataset, query_additional_cb, qctx);
+	(void)dns_rdataset_additionaldata(rdataset, query_additional_cb, qctx,
+					  DNS_RDATASET_MAXADDITIONAL);
 	CTRACE(ISC_LOG_DEBUG(3), "query_additional: done");
 }
 
@@ -2165,7 +2167,8 @@ query_addrrset(query_ctx_t *qctx, dns_name_t **namep,
 	 * To the current response for 'client', add the answer RRset
 	 * '*rdatasetp' and an optional signature set '*sigrdatasetp', with
 	 * owner name '*namep', to section 'section', unless they are
-	 * already there.  Also add any pertinent additional data.
+	 * already there.  Also add any pertinent additional data, unless
+	 * the query was for type ANY.
 	 *
 	 * If 'dbuf' is not NULL, then '*namep' is the name whose data is
 	 * stored in 'dbuf'.  In this case, query_addrrset() guarantees that
@@ -2220,7 +2223,9 @@ query_addrrset(query_ctx_t *qctx, dns_name_t **namep,
 	 */
 	query_addtoname(mname, rdataset);
 	query_setorder(qctx, mname, rdataset);
-	query_additional(qctx, rdataset);
+	if (qctx->qtype != dns_rdatatype_any) {
+		query_additional(qctx, rdataset);
+	}
 
 	/*
 	 * Note: we only add SIGs if we've added the type they cover, so
