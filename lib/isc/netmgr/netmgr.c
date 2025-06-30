@@ -324,6 +324,23 @@ isc__netmgr_create(isc_mem_t *mctx, uint32_t nworkers, isc_nm_t **netmgrp) {
 
 	mgr->workers = isc_mem_get(mctx,
 				   mgr->nworkers * sizeof(isc__networker_t));
+
+	/*
+	 * Ensure the first 3 file descriptors are open
+	 * otherwise, libuv may use one and trigger abort
+	 * when closing it.
+	 *
+	 * See https://github.com/libuv/libuv/pull/4559
+	 */
+	do {
+		int fd = open("/dev/null", O_RDWR, 0);
+		RUNTIME_CHECK(fd >= 0);
+		if (fd > STDERR_FILENO) {
+			close (fd);
+			break;
+		}
+	} while (true);
+
 	for (int i = 0; i < mgr->nworkers; i++) {
 		isc__networker_t *worker = &mgr->workers[i];
 		int r;
