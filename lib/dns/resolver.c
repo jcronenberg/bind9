@@ -263,6 +263,7 @@ struct fetchctx {
 	unsigned int			dbucketnum;
 	char *				info;
 	isc_mem_t *			mctx;
+	dns_name_t *			ns_name;
 
 	/*% Locked by appropriate bucket lock. */
 	fetchstate			state;
@@ -5739,7 +5740,9 @@ mark_related(dns_name_t *name, dns_rdataset_t *rdataset,
  * locally served zone.
  */
 static inline isc_boolean_t
-name_external(dns_name_t *name, dns_rdatatype_t type, fetchctx_t *fctx) {
+name_external(dns_name_t *name, dns_name_t *ns_name, dns_rdatatype_t type,
+	      fetchctx_t *fctx)
+{
 	isc_result_t result;
 	dns_forwarders_t *forwarders = NULL;
 	dns_fixedname_t fixed, zfixed;
@@ -5751,7 +5754,9 @@ name_external(dns_name_t *name, dns_rdatatype_t type, fetchctx_t *fctx) {
 	unsigned int labels;
 	dns_namereln_t rel;
 
-	apex = ISFORWARDER(fctx->addrinfo) ? fctx->fwdname : &fctx->domain;
+	apex = ISFORWARDER(fctx->addrinfo)
+		? fctx->fwdname
+		: (ns_name != NULL) ? ns_name : &fctx->domain;
 
 	/*
 	 * The name is outside the queried namespace.
@@ -5861,7 +5866,7 @@ check_section(void *arg, dns_name_t *addname, dns_rdatatype_t type,
 	result = dns_message_findname(fctx->rmessage, section, addname,
 				      dns_rdatatype_any, 0, &name, NULL);
 	if (result == ISC_R_SUCCESS) {
-		external = ISC_TF(name_external(name, type, fctx));
+		external = ISC_TF(name_external(name, fctx->ns_name, type, fctx));
 		if (type == dns_rdatatype_a) {
 			for (rdataset = ISC_LIST_HEAD(name->list);
 			     rdataset != NULL;
@@ -6544,6 +6549,8 @@ noanswer_response(fetchctx_t *fctx, dns_name_t *oqname,
 		 */
 		INSIST(ns_rdataset != NULL);
 		fctx->attributes |= FCTX_ATTR_GLUING;
+		fctx->ns_name = ns_name;
+
 		/*
 		 * Mark the glue records in the additional section to be cached.
 		 */
@@ -6645,8 +6652,9 @@ validinanswer(dns_rdataset_t *rdataset, fetchctx_t *fctx) {
 
 
 static isc_result_t
-answer_response(fetchctx_t *fctx) {
+answer_response(resquery_t *query) {
 	isc_result_t result;
+	fetchctx_t *fctx = NULL;
 	dns_message_t *message = NULL;
 	dns_name_t *name = NULL, *qname = NULL, *ns_name = NULL;
 	dns_name_t *aname = NULL, *cname = NULL, *dname = NULL;
@@ -6660,6 +6668,8 @@ answer_response(fetchctx_t *fctx) {
 	dns_view_t *view = NULL;
 	dns_trust_t trust;
 
+	REQUIRE(VALID_QUERY(query));
+	fctx = query->fctx;
 	REQUIRE(VALID_FCTX(fctx));
 
 	FCTXTRACE("answer_response");
@@ -6725,7 +6735,9 @@ answer_response(fetchctx_t *fctx) {
 			/*
 			 * Don't accept DNAME from parent namespace.
 			 */
-			if (name_external(name, dns_rdatatype_dname, fctx)) {
+			if (name_external(name, NULL, dns_rdatatype_dname,
+					  fctx))
+			{
 				continue;
 			}
 
@@ -6807,6 +6819,7 @@ answer_response(fetchctx_t *fctx) {
 			rdataset->attributes |= DNS_RDATASETATTR_ANSWER;
 			rdataset->attributes |= DNS_RDATASETATTR_CACHE;
 			rdataset->trust = trust;
+			fctx->ns_name = ns_name;
 			(void)dns_rdataset_additionaldata(rdataset,
 							  check_related,
 							  fctx, 0);
@@ -6833,6 +6846,7 @@ answer_response(fetchctx_t *fctx) {
 		ardataset->attributes |= DNS_RDATASETATTR_ANSWER;
 		ardataset->attributes |= DNS_RDATASETATTR_CACHE;
 		ardataset->trust = trust;
+		fctx->ns_name = ns_name;
 		(void)dns_rdataset_additionaldata(ardataset, check_related,
 						  fctx, 0);
 		for (sigrdataset = ISC_LIST_HEAD(aname->list);
@@ -6959,7 +6973,9 @@ answer_response(fetchctx_t *fctx) {
 	while (!done && result == ISC_R_SUCCESS) {
 		name = NULL;
 		dns_message_currentname(message, DNS_SECTION_AUTHORITY, &name);
-		if (ISC_TF(!name_external(name, dns_rdatatype_ns, fctx))) {
+		if (ISC_TF(!name_external(name, ns_name, dns_rdatatype_ns, fctx) &&
+                           dns_name_issubdomain(&fctx->name, name)))
+		{
 			/*
 			 * We expect to find NS or SIG NS rdatasets, and
 			 * nothing else.
@@ -6990,6 +7006,7 @@ answer_response(fetchctx_t *fctx) {
 					 * Mark any additional data related
 					 * to this rdataset.
 					 */
+					fctx->ns_name = ns_name;
 					(void)dns_rdataset_additionaldata(
 							rdataset,
 							check_related,
@@ -7849,7 +7866,7 @@ resquery_response(isc_task_t *task, isc_event_t *event) {
 		if ((message->flags & DNS_MESSAGEFLAG_AA) != 0 ||
 		    ISFORWARDER(query->addrinfo))
 		{
-			result = answer_response(fctx);
+			result = answer_response(query);
 			if (result != ISC_R_SUCCESS)
 				FCTXTRACE3("answer_response (AA/fwd)", result);
 		} else if (iscname(fctx) &&
@@ -7861,7 +7878,7 @@ resquery_response(isc_task_t *task, isc_event_t *event) {
 			 * answer when a CNAME is followed.  We should treat
 			 * it as a valid answer.
 			 */
-			result = answer_response(fctx);
+			result = answer_response(query);
 			if (result != ISC_R_SUCCESS)
 				FCTXTRACE3("answer_response (!ANY/!CNAME)",
 					   result);
@@ -7870,7 +7887,7 @@ resquery_response(isc_task_t *task, isc_event_t *event) {
 			/*
 			 * Lame response !!!.
 			 */
-			result = answer_response(fctx);
+			result = answer_response(query);
 			if (result != ISC_R_SUCCESS)
 				FCTXTRACE3("answer_response (!NS)", result);
 		} else {
