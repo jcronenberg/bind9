@@ -747,6 +747,7 @@ typedef struct respctx {
 	bool get_nameservers; /* get a new NS rrset at
 			       * zone cut? */
 	bool resend;	      /* resend this query? */
+	bool secured;	      /* message was signed or had a valid cookie */
 	bool nextitem;	      /* invalid response; keep
 			       * listening for the correct one */
 	bool truncated;	      /* response was truncated */
@@ -6935,7 +6936,8 @@ mark_related(dns_name_t *name, dns_rdataset_t *rdataset, bool external,
  * locally served zone.
  */
 static inline bool
-name_external(const dns_name_t *name, dns_rdatatype_t type, fetchctx_t *fctx) {
+name_external(const dns_name_t *name, dns_rdatatype_t type, respctx_t *rctx) {
+       fetchctx_t *fctx = rctx->fctx;
        isc_result_t result;
        dns_forwarders_t *forwarders = NULL;
        dns_fixedname_t fixed, zfixed;
@@ -6947,7 +6949,10 @@ name_external(const dns_name_t *name, dns_rdatatype_t type, fetchctx_t *fctx) {
        unsigned int labels;
        dns_namereln_t rel;
 
-       apex = ISFORWARDER(fctx->addrinfo) ? fctx->fwdname : &fctx->domain;
+       apex = !ISFORWARDER(fctx->addrinfo)
+               ? rctx->ns_name != NULL ? rctx->ns_name : &fctx->domain
+               : fctx->fwdname;
+
 
        /*
         * The name is outside the queried namespace.
@@ -7032,7 +7037,8 @@ name_external(const dns_name_t *name, dns_rdatatype_t type, fetchctx_t *fctx) {
 static isc_result_t
 check_section(void *arg, const dns_name_t *addname, dns_rdatatype_t type,
 	      dns_section_t section) {
-	fetchctx_t *fctx = arg;
+        respctx_t *rctx = arg;
+	fetchctx_t *fctx = rctx->fctx;
 	isc_result_t result;
 	dns_name_t *name = NULL;
 	dns_rdataset_t *rdataset = NULL;
@@ -7054,7 +7060,7 @@ check_section(void *arg, const dns_name_t *addname, dns_rdatatype_t type,
 	result = dns_message_findname(fctx->rmessage, section, addname,
 				      dns_rdatatype_any, 0, &name, NULL);
 	if (result == ISC_R_SUCCESS) {
-		external = name_external(name, type, fctx);
+		external = name_external(name, type, rctx);
 		if (type == dns_rdatatype_a) {
 			for (rdataset = ISC_LIST_HEAD(name->list);
 			     rdataset != NULL;
@@ -7662,6 +7668,46 @@ betterreferral(fetchctx_t *fctx) {
 	return (false);
 }
 
+static bool
+rctx_need_tcpretry(respctx_t *rctx) {
+	if ((rctx->retryopts & DNS_FETCHOPT_TCP) != 0) {
+		/* TCP is already in the retry flags */
+		return false;
+	}
+
+	/*
+	 * If the message was secured, no need to continue.
+	 */
+	if (rctx->secured) {
+		return false;
+	}
+
+	/*
+	 * Currently the only extra reason why we might need to
+	 * retry a UDP response over TCP is a DNAME in the message.
+	 */
+	if (dns_message_hasdname(rctx->fctx->rmessage)) {
+		return true;
+	}
+
+	return false;
+}
+
+static isc_result_t
+rctx_tcpretry(respctx_t *rctx) {
+	/*
+	 * Do we need to retry a UDP response over TCP?
+	 */
+	if (rctx_need_tcpretry(rctx)) {
+		rctx->retryopts |= DNS_FETCHOPT_TCP;
+		rctx->resend = true;
+		rctx_done(rctx, ISC_R_SUCCESS);
+		return ISC_R_COMPLETE;
+	}
+
+	return ISC_R_SUCCESS;
+}
+
 /*
  * resquery_response():
  * Handles responses received in response to iterative queries sent by
@@ -7820,6 +7866,11 @@ resquery_response(isc_task_t *task, isc_event_t *event) {
 	}
 
 	/*
+	 * The dispatcher should ensure we only get responses with QR set.
+	 */
+	INSIST((fctx->rmessage->flags & DNS_MESSAGEFLAG_QR) != 0);
+
+	/*
 	 * If the message is signed, check the signature.  If not, this
 	 * returns success anyway.
 	 */
@@ -7831,9 +7882,16 @@ resquery_response(isc_task_t *task, isc_event_t *event) {
 	}
 
 	/*
-	 * The dispatcher should ensure we only get responses with QR set.
+	 * Remember whether this message was signed or had a
+	 * valid client cookie; if not, we may need to retry over
+	 * TCP later.
 	 */
-	INSIST((fctx->rmessage->flags & DNS_MESSAGEFLAG_QR) != 0);
+	if (fctx->rmessage->cc_ok || fctx->rmessage->tsig != NULL ||
+	    fctx->rmessage->sig0 != NULL)
+	{
+		rctx.secured = true;
+	}
+
 	/*
 	 * INSIST() that the message comes from the place we sent it to,
 	 * since the dispatch code should ensure this.
@@ -7842,6 +7900,17 @@ resquery_response(isc_task_t *task, isc_event_t *event) {
 	 * ensured by the dispatch code).
 	 */
 
+	/*
+	 * Check whether we need to retry over TCP for some other reason.
+	 */
+	result = rctx_tcpretry(&rctx);
+	if (result == ISC_R_COMPLETE) {
+		return;
+	}
+
+	/*
+	 * Check for EDNS issues.
+	 */
 	rctx_edns(&rctx);
 
 	/*
@@ -8565,8 +8634,8 @@ rctx_answer_positive(respctx_t *rctx) {
 	}
 
 	/*
-	 * Cache records in the authority section, if
-	 * there are any suitable for caching.
+	 * Cache records in the authority section, if there are
+	 * any suitable for caching.
 	 */
 	rctx_authority_positive(rctx);
 
@@ -8633,9 +8702,9 @@ rctx_answer_scan(respctx_t *rctx) {
 
 		case dns_namereln_subdomain:
 			/*
-			* Don't accept DNAME from parent namespace.
-			*/
-			if (name_external(name, dns_rdatatype_dname, fctx)) {
+			 * Don't accept DNAME from parent namespace.
+			 */
+			if (name_external(name, dns_rdatatype_dname, rctx)) {
 				continue;
 			}
 
@@ -8739,7 +8808,7 @@ rctx_answer_any(respctx_t *rctx) {
 		rdataset->attributes |= DNS_RDATASETATTR_CACHE;
 		rdataset->trust = rctx->trust;
 
-		(void)dns_rdataset_additionaldata(rdataset, check_related, fctx, 0);
+		(void)dns_rdataset_additionaldata(rdataset, check_related, rctx, 0);
 	}
 
 	return (ISC_R_SUCCESS);
@@ -8786,7 +8855,7 @@ rctx_answer_match(respctx_t *rctx) {
 	rctx->ardataset->attributes |= DNS_RDATASETATTR_ANSWER;
 	rctx->ardataset->attributes |= DNS_RDATASETATTR_CACHE;
 	rctx->ardataset->trust = rctx->trust;
-	(void)dns_rdataset_additionaldata(rctx->ardataset, check_related, fctx, 0);
+	(void)dns_rdataset_additionaldata(rctx->ardataset, check_related, rctx, 0);
 
 	for (sigrdataset = ISC_LIST_HEAD(rctx->aname->list);
 	     sigrdataset != NULL;
@@ -8932,20 +9001,25 @@ rctx_answer_dname(respctx_t *rctx) {
 
 /*
  * rctx_authority_positive():
- * Examine the records in the authority section (if there are any) for a
- * positive answer.  We expect the names for all rdatasets in this section
- * to be subdomains of the domain being queried; any that are not are
- * skipped.  We expect to find only *one* owner name; any names
- * after the first one processed are ignored. We expect to find only
- * rdatasets of type NS, RRSIG, or SIG; all others are ignored. Whatever
- * remains can be cached at trust level authauthority or additional
- * (depending on whether the AA bit was set on the answer).
+ * If a positive answer was received over TCP or secured with a cookie
+ * or TSIG, examine the authority section.  We expect names for all
+ * rdatasets in this section to be subdomains of the domain being queried;
+ * any that are not are skipped.  We expect to find only *one* owner name;
+ * any names after the first one processed are ignored. We expect to find
+ * only rdatasets of type NS; all others are ignored. Whatever remains can
+ * be cached at trust level authauthority or additional (depending on
+ * whether the AA bit was set on the answer).
  */
 static void
 rctx_authority_positive(respctx_t *rctx) {
 	fetchctx_t *fctx = rctx->fctx;
 	bool done = false;
 	isc_result_t result;
+
+	/* If it's spoofable, don't cache it. */
+	if (!rctx->secured && (rctx->query->options & DNS_FETCHOPT_TCP) == 0) {
+		return;
+	}
 
 	result = dns_message_firstname(fctx->rmessage, DNS_SECTION_AUTHORITY);
 	while (!done && result == ISC_R_SUCCESS) {
@@ -8954,7 +9028,9 @@ rctx_authority_positive(respctx_t *rctx) {
 		dns_message_currentname(fctx->rmessage, DNS_SECTION_AUTHORITY,
 					&name);
 
-		if (!name_external(name, dns_rdatatype_ns, fctx)) {
+		if (!name_external(name, dns_rdatatype_ns, rctx) &&
+		    dns_name_issubdomain(&fctx->name, name))
+		{
 			dns_rdataset_t *rdataset = NULL;
 
 			/*
@@ -8991,7 +9067,7 @@ rctx_authority_positive(respctx_t *rctx) {
 					 * to this rdataset.
 					 */
 					(void)dns_rdataset_additionaldata(
-						rdataset, check_related, fctx, 0);
+						rdataset, check_related, rctx, 0);
 					done = true;
 				}
 			}
@@ -9495,7 +9571,7 @@ rctx_referral(respctx_t *rctx) {
 	/*
 	 * Mark the glue records in the additional section to be cached.
 	 */
-	(void)dns_rdataset_additionaldata(rctx->ns_rdataset, check_related, fctx, 0);
+	(void)dns_rdataset_additionaldata(rctx->ns_rdataset, check_related, rctx, 0);
 #if CHECK_FOR_GLUE_IN_ANSWER
 	/*
 	 * Look in the answer section for "glue" that is incorrectly
@@ -9508,7 +9584,7 @@ rctx_referral(respctx_t *rctx) {
 	    (fctx->type == dns_rdatatype_aaaa || fctx->type == dns_rdatatype_a))
 	{
 		(void)dns_rdataset_additionaldata(rctx->ns_rdataset,
-						  check_answer, fctx, 0);
+						  check_answer, rctx, 0);
 	}
 #endif /* if CHECK_FOR_GLUE_IN_ANSWER */
 	FCTX_ATTR_CLR(fctx, FCTX_ATTR_GLUING);
@@ -9619,7 +9695,7 @@ again:
 			if (CHASE(rdataset)) {
 				rdataset->attributes &= ~DNS_RDATASETATTR_CHASE;
 				(void)dns_rdataset_additionaldata(
-					rdataset, check_related, fctx, 0);
+					rdataset, check_related, rctx, 0);
 				rescan = true;
 			}
 		}
