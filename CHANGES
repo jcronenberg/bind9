@@ -1,3 +1,6 @@
+4489.   [security]      It was possible to trigger assertions when
+                        processing a response. (CVE-2016-8864) [RT #43465]
+
 	--- 9.9.9-P1 released ---
 
 4366.	[bug]		Address race condition when updating rbtnode bit
