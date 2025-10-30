@@ -3462,7 +3462,7 @@ AC_SUBST(CURL)
 # empty).  The variable VARIABLE will be substituted into output files.
 #
 
-AC_DEFUN(NOM_PATH_FILE, [
+AC_DEFUN([NOM_PATH_FILE], [
 $1=""
 AC_MSG_CHECKING(for $2)
 for d in $3
