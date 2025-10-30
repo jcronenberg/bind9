@@ -337,6 +337,14 @@ dst__hmacmd5_init(dst_func_t **funcp) {
 	REQUIRE(funcp != NULL);
 	if (*funcp == NULL)
 		*funcp = &hmacmd5_functions;
+
+#ifdef HAVE_FIPS_MODE
+	int fips_mode = FIPS_mode();
+	if (fips_mode != 0) {
+		*funcp = NULL;
+	}
+#endif
+
 	return (ISC_R_SUCCESS);
 }
 
