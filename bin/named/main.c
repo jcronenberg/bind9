@@ -85,6 +85,7 @@
  * Include header files for database drivers here.
  */
 /* #include "xxdb.h" */
+#include <ldapdb.h>
 
 #ifdef CONTRIB_DLZ
 /*
@@ -1003,6 +1004,7 @@ setup(void) {
 	 * Add calls to register sdb drivers here.
 	 */
 	/* xxdb_init(); */
+	ldapdb_init();
 
 #ifdef ISC_DLZ_DLOPEN
 	/*
@@ -1043,6 +1045,7 @@ cleanup(void) {
 	 * Add calls to unregister sdb drivers here.
 	 */
 	/* xxdb_clear(); */
+	ldapdb_clear();
 
 #ifdef CONTRIB_DLZ
 	/*

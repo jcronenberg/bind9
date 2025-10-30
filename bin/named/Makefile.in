@@ -34,9 +34,9 @@ VERSION=@BIND9_VERSION@
 #
 # Add database drivers here.
 #
-DBDRIVER_OBJS =
-DBDRIVER_SRCS =
-DBDRIVER_INCLUDES =
+DBDRIVER_OBJS = ldapdb.@O@
+DBDRIVER_SRCS = ldapdb.c
+DBDRIVER_INCLUDES = -DLDAP_DEPRECATED
 DBDRIVER_LIBS =
 
 DLZ_DRIVER_DIR =	${top_srcdir}/contrib/dlz/drivers
