@@ -47,7 +47,8 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 if [ ${OPTIONFILE-X} = X ]; then
-	WORKDIR=/tmp/`date +%s`.$$
+    TMPDIR=`mktemp -p /tmp/ -d named-bootconf.XXXXXXXXXX` || exit 1
+	WORKDIR=$TMPDIR/`date +%s`.$$
 	( umask 077 ; mkdir $WORKDIR ) || {
 		echo "unable to create work directory '$WORKDIR'" >&2 
 		exit 1
@@ -301,7 +302,7 @@ if [ $DUMP -eq 1 ]; then
 	cat $ZONEFILE $COMMENTFILE
 
 	rm -f $OPTIONFILE $ZONEFILE $COMMENTFILE
-	rmdir $WORKDIR
+	rm -rf $TMPDIR
 fi
 
 exit 0
