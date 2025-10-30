@@ -139,7 +139,7 @@ options {\n\
 	notify-source-v6 *;\n\
 	cleaning-interval 0;  /* now meaningless */\n\
 	min-roots 2;\n\
-	lame-ttl 600;\n\
+	lame-ttl 0;\n\
 	max-ncache-ttl 10800; /* 3 hours */\n\
 	max-cache-ttl 604800; /* 1 week */\n\
 	transfer-format many-answers;\n\
