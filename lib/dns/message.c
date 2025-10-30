@@ -1672,6 +1672,19 @@ dns_message_parse(dns_message_t *msg, isc_buffer_t *source,
 	msg->header_ok = 0;
 	msg->question_ok = 0;
 
+	if ((options & DNS_MESSAGEPARSE_CLONEBUFFER) == 0) {
+		isc_buffer_usedregion(&origsource, &msg->saved);
+	} else {
+		msg->saved.length = isc_buffer_usedlength(&origsource);
+		msg->saved.base = isc_mem_get(msg->mctx, msg->saved.length);
+		if (msg->saved.base == NULL) {
+			return (ISC_R_NOMEMORY);
+		}
+		memmove(msg->saved.base, isc_buffer_base(&origsource),
+			msg->saved.length);
+		msg->free_saved = 1;
+	}
+
 	isc_buffer_remainingregion(source, &r);
 	if (r.length < DNS_MESSAGE_HEADERLEN)
 		return (ISC_R_UNEXPECTEDEND);
@@ -1747,17 +1760,6 @@ dns_message_parse(dns_message_t *msg, isc_buffer_t *source,
 	}
 
  truncated:
-	if ((options & DNS_MESSAGEPARSE_CLONEBUFFER) == 0)
-		isc_buffer_usedregion(&origsource, &msg->saved);
-	else {
-		msg->saved.length = isc_buffer_usedlength(&origsource);
-		msg->saved.base = isc_mem_get(msg->mctx, msg->saved.length);
-		if (msg->saved.base == NULL)
-			return (ISC_R_NOMEMORY);
-		memmove(msg->saved.base, isc_buffer_base(&origsource),
-			msg->saved.length);
-		msg->free_saved = 1;
-	}
 
 	if (ret == ISC_R_UNEXPECTEDEND && ignore_tc)
 		return (DNS_R_RECOVERABLE);
