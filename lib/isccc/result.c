@@ -47,7 +47,8 @@ static const char *text[ISCCC_R_NRESULTS] = {
 	"bad auth",				/* 3 */
 	"expired",				/* 4 */
 	"clock skew",				/* 5 */
-	"duplicate"				/* 6 */
+	"duplicate",				/* 6 */
+	"max depth"				/* 7 */
 };
 
 #define ISCCC_RESULT_RESULTSET			2
