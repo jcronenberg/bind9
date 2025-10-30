@@ -34,4 +34,6 @@ SRCS =		os.c dlz_dlopen_driver.c
 
 TARGETS =	${OBJS}
 
+EXT_CFLAGS = -fPIE -static
+
 @BIND9_MAKE_RULES@

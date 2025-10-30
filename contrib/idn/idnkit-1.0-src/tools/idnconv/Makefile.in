@@ -68,8 +68,8 @@ IDNLIB = ../../lib/libidnkit.la
 INCS = -I$(srcdir) -I$(srcdir)/../../include -I../../include $(ICONVINC)
 DEFS =
 
-CFLAGS = $(INCS) $(DEFS) @CPPFLAGS@ @CFLAGS@
-LDFLAGS = @LDFLAGS@
+CFLAGS = $(INCS) $(DEFS) @CPPFLAGS@ @CFLAGS@ -fPIE
+LDFLAGS = @LDFLAGS@ -pie
 
 SRCS = idnconv.c util.c selectiveencode.c
 OBJS = idnconv.o util.o selectiveencode.o

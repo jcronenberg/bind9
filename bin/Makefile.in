@@ -23,4 +23,8 @@ SUBDIRS =	named rndc dig dnssec tools tests nsupdate \
 		check confgen @PYTHON_TOOLS@ @PKCS11_TOOLS@
 TARGETS =
 
+EXT_CFLAGS = -fPIE -static
+
 @BIND9_MAKE_RULES@
+
+LDFLAGS   += -pie

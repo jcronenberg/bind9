@@ -51,7 +51,11 @@ HTMLPAGES =	arpaname.html named-journalprint.html nsec3hash.html \
 		genrandom.html isc-hmac-fixup.html
 MANOBJS =	${MANPAGES} ${HTMLPAGES}
 
+EXT_CFLAGS = -fPIE -static
+
 @BIND9_MAKE_RULES@
+
+LDFLAGS   += -pie
 
 arpaname@EXEEXT@: arpaname.@O@ ${ISCDEPLIBS} ${DNSDEPLIBS}
 	${LIBTOOL_MODE_LINK} ${PURIFY} ${CC} ${CFLAGS} ${LDFLAGS} -o $@ arpaname.@O@ \

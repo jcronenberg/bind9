@@ -32,4 +32,8 @@ SRCS =		os.c
 
 TARGETS =	${OBJS}
 
+EXT_CFLAGS = -fPIE -static
+
 @BIND9_MAKE_RULES@
+
+LDFLAGS   += -pie

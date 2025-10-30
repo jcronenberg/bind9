@@ -13,11 +13,11 @@ PROFILE =	# -pg
 OPTIM	=	# -O3 -DNDEBUG
 
 #CFLAGS	?=	@CFLAGS@ @DEFS@ -I@top_srcdir@
-CFLAGS	+=	-g @DEFS@ -I@top_srcdir@
+CFLAGS	+=	-g @DEFS@ -I@top_srcdir@ -fPIE
 CFLAGS	+=	-Wall #-DDBG
 CFLAGS	+=	-Wmissing-prototypes
 CFLAGS	+=	$(PROFILE) $(OPTIM)
-LDFLAGS	+=	$(PROFILE)
+LDFLAGS	+=	$(PROFILE) -fPIE -pie
 LIBS	=	@LIBS@
 
 PROJECT =	@PACKAGE_TARNAME@

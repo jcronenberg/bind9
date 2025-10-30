@@ -64,7 +64,11 @@ MANOBJS =	${MANPAGES} ${HTMLPAGES}
 
 UOBJS =		unix/os.@O@
 
+EXT_CFLAGS = -fPIE -static
+
 @BIND9_MAKE_RULES@
+
+LDFLAGS   += -pie
 
 rndc-confgen.@O@: rndc-confgen.c
 	${LIBTOOL_MODE_COMPILE} ${CC} ${ALL_CFLAGS} \

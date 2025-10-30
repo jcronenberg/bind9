@@ -57,7 +57,11 @@ HTMLPAGES =	named-checkconf.html named-checkzone.html
 
 MANOBJS =	${MANPAGES} ${HTMLPAGES}
 
+EXT_CFLAGS = -fPIE -static
+
 @BIND9_MAKE_RULES@
+
+LDFLAGS   += -pie
 
 named-checkconf.@O@: named-checkconf.c
 	${LIBTOOL_MODE_COMPILE} ${CC} ${ALL_CFLAGS} \

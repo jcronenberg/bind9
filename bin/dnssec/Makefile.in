@@ -64,7 +64,11 @@ HTMLPAGES =	dnssec-dsfromkey.html dnssec-keyfromlabel.html \
 
 MANOBJS =	${MANPAGES} ${HTMLPAGES}
 
+EXT_CFLAGS = -fPIE -static
+
 @BIND9_MAKE_RULES@
+
+LDFLAGS   += -pie
 
 dnssec-dsfromkey@EXEEXT@: dnssec-dsfromkey.@O@ ${OBJS} ${DEPLIBS}
 	export BASEOBJS="dnssec-dsfromkey.@O@ ${OBJS}"; \

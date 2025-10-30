@@ -68,7 +68,11 @@ HTMLPAGES =	nsupdate.html
 
 MANOBJS =	${MANPAGES} ${HTMLPAGES}
 
+EXT_CFLAGS = -fPIE -static
+
 @BIND9_MAKE_RULES@
+
+LDFLAGS   += -pie
 
 nsupdate.@O@: nsupdate.c
 	${LIBTOOL_MODE_COMPILE} ${CC} ${ALL_CFLAGS} \

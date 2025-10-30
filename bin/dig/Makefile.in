@@ -69,7 +69,11 @@ HTMLPAGES =	dig.html host.html nslookup.html
 
 MANOBJS =	${MANPAGES} ${HTMLPAGES}
 
+EXT_CFLAGS = -fPIE -static
+
 @BIND9_MAKE_RULES@
+
+LDFLAGS   += -pie
 
 dig@EXEEXT@: dig.@O@ dighost.@O@ ${UOBJS} ${DEPLIBS}
 	export BASEOBJS="dig.@O@ dighost.@O@ ${UOBJS}"; \

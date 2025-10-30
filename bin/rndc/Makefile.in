@@ -59,7 +59,11 @@ HTMLPAGES =	rndc.html rndc.conf.html
 
 MANOBJS =	${MANPAGES} ${HTMLPAGES}
 
+EXT_CFLAGS = -fPIE -static
+
 @BIND9_MAKE_RULES@
+
+LDFLAGS   += -pie
 
 rndc.@O@: rndc.c
 	${LIBTOOL_MODE_COMPILE} ${CC} ${ALL_CFLAGS} \
