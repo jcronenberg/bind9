@@ -32,6 +32,7 @@ rm -f ns3/master.bk ns3/master.bk.jnl
 rm -f ns4/named.conf ns4/nil.db ns4/root.db
 rm -f ns6/*.db ns6/*.bk ns6/*.jnl
 rm -f ns7/*.db ns7/*.bk ns7/*.jnl
+rm -f ns1/ixfr-too-big.db ns1/ixfr-too-big.db.jnl
 
 rm -f */named.memstats
 rm -f */named.run

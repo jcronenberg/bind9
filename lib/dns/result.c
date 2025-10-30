@@ -168,6 +168,7 @@ static const char *text[DNS_R_NRESULTS] = {
 	"bad CDS",			       /*%< 111 DNS_R_BADCSD */
 	"bad CDNSKEY",			       /*%< 112 DNS_R_BADCDNSKEY */
 	"malformed OPT option"		       /*%< 113 DNS_R_OPTERR */
+	"too many records",	               /*%< 114 DNS_R_TOOMANYRECORDS */
 };
 
 static const char *rcode_text[DNS_R_NRCODERESULTS] = {

@@ -45,7 +45,11 @@
     <itemizedlist>
       <listitem>
 	<para>
-	  None.
+	  Added the ability to specify the maximum number of records
+	  permitted in a zone (max-records #;).  This provides a mechanism
+	  to block overly large zone transfers, which is a potential risk
+	  with slave zones from other parties, as described in CVE-2016-6170.
+	  [RT #42143]
 	</para>
       </listitem>
     </itemizedlist>
