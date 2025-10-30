@@ -1,4 +1,4 @@
-#! /usr/local/bin/perl -w
+#! /usr/bin/perl -w
 # $Id: generate_nameprep_data.pl,v 1.1 2003/06/04 00:27:54 marka Exp $
 #
 # Copyright (c) 2001 Japan Network Information Center.  All rights reserved.
