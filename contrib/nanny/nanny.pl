@@ -19,7 +19,7 @@
 
 # A simple nanny to make sure named stays running.
 
-$pid_file_location = '/var/run/named.pid';
+$pid_file_location = '/var/run/named/named.pid';
 $nameserver_location = 'localhost';
 $dig_program = 'dig';
 $named_program =  'named';
