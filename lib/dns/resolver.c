@@ -170,6 +170,14 @@
 #define DEFAULT_MAX_QUERIES 50
 #endif
 
+/*
+ * After NS_FAIL_LIMIT attempts to fetch a name server address,
+ * if the number of addresses in the NS RRset exceeds NS_RR_LIMIT,
+ * stop trying to fetch, in order to avoid wasting resources.
+ */
+#define NS_FAIL_LIMIT 4
+#define NS_RR_LIMIT   5
+
 /* Number of hash buckets for zone counters */
 #ifndef RES_DOMAIN_BUCKETS
 #define RES_DOMAIN_BUCKETS	523
@@ -2733,7 +2741,7 @@ sort_finds(dns_adbfindlist_t *findlist) {
 static void
 findname(fetchctx_t *fctx, dns_name_t *name, in_port_t port,
 	 unsigned int options, unsigned int flags, isc_stdtime_t now,
-	 isc_boolean_t *overquota, isc_boolean_t *need_alternate)
+	 isc_boolean_t *overquota, isc_boolean_t *need_alternate, unsigned int *no_addresses)
 {
 	dns_adbaddrinfo_t *ai;
 	dns_adbfind_t *find;
@@ -2826,7 +2834,12 @@ findname(fetchctx_t *fctx, dns_name_t *name, in_port_t port,
 			      find->result_v6 != DNS_R_NXDOMAIN) ||
 			     (res->dispatches6 == NULL &&
 			      find->result_v4 != DNS_R_NXDOMAIN)))
+			      {
 				*need_alternate = ISC_TRUE;
+			      }
+			      if (no_addresses != NULL) {
+			        (*no_addresses)++;
+			      }
 		} else {
 #ifdef ENABLE_FETCHLIMIT
 			if ((find->options & DNS_ADBFIND_OVERQUOTA) != 0) {
@@ -2882,6 +2895,7 @@ fctx_getaddresses(fetchctx_t *fctx, isc_boolean_t badcache) {
 #ifdef ENABLE_FETCHLIMIT
 	isc_boolean_t all_spilled = ISC_TRUE;
 #endif /* ENABLE_FETCHLIMIT */
+	unsigned int no_addresses = 0;
 
 	FCTXTRACE5("getaddresses", "fctx->depth=", fctx->depth);
 
@@ -2955,7 +2969,9 @@ fctx_getaddresses(fetchctx_t *fctx, isc_boolean_t badcache) {
 				result = dns_name_dup(domain, fctx->mctx,
 						      &fctx->domain);
 				if (result != ISC_R_SUCCESS)
+				{
 					return (result);
+				}
 #ifdef ENABLE_FETCHLIMIT
 				result = fcount_incr(fctx, ISC_TRUE);
 				if (result != ISC_R_SUCCESS)
@@ -3042,10 +3058,17 @@ fctx_getaddresses(fetchctx_t *fctx, isc_boolean_t badcache) {
 		 */
 		result = dns_rdata_tostruct(&rdata, &ns, NULL);
 		if (result != ISC_R_SUCCESS)
+		{
 			continue;
+		}
+		if (no_addresses > NS_FAIL_LIMIT &&
+		    dns_rdataset_count(&fctx->nameservers) > NS_RR_LIMIT)
+		{
+			stdoptions |= DNS_ADBFIND_NOFETCH;
+		}
 
 		findname(fctx, &ns.name, 0, stdoptions, 0, now,
-			 &overquota, &need_alternate);
+			 &overquota, &need_alternate, &no_addresses);
 
 #ifdef ENABLE_FETCHLIMIT
 		if (!overquota)
@@ -3056,7 +3079,9 @@ fctx_getaddresses(fetchctx_t *fctx, isc_boolean_t badcache) {
 		dns_rdata_freestruct(&ns);
 	}
 	if (result != ISC_R_NOMORE)
+	{
 		return (result);
+	}
 
 	/*
 	 * Do we need to use 6 to 4?
@@ -3071,7 +3096,7 @@ fctx_getaddresses(fetchctx_t *fctx, isc_boolean_t badcache) {
 			if (!a->isaddress) {
 				findname(fctx, &a->_u._n.name, a->_u._n.port,
 					 stdoptions, FCTX_ADDRINFO_FORWARDER,
-					 now, NULL, NULL);
+					 now, NULL, NULL, NULL);
 				continue;
 			}
 			if (isc_sockaddr_pf(&a->_u.addr) != family)
