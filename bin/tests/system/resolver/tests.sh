@@ -286,6 +286,10 @@ grep "From NS 4" dig.ns7.bar.${n} > /dev/null || ret=1
 
 if [ $ret != 0 ]; then echo "I:failed"; status=1; fi
 
+$PERL $SYSTEMTESTTOP/stop.pl resolver ns4
+touch ns4/named.noaa
+$PERL $SYSTEMTESTTOP/start.pl --noclean --restart --port ${PORT} resolver ns4 || ret=1
+
 n=`expr $n + 1`
 echo "I:checking that update a nameservers glue has immediate effects ($n)"
 ret=0
@@ -303,6 +307,10 @@ $DIG +tcp TXT bar.child.server @10.53.0.7 -p 5300 > dig.ns7.bar.${n} || ret=1
 grep "From NS 4" dig.ns7.bar.${n} > /dev/null || ret=1
 
 if [ $ret != 0 ]; then echo "I:failed"; status=1; fi
+
+$PERL $SYSTEMTESTTOP/stop.pl resolver ns4
+rm ns4/named.noaa
+$PERL $SYSTEMTESTTOP/start.pl --noclean --restart --port ${PORT} resolver ns4 || ret=1
 
 n=`expr $n + 1`
 echo "I:checking empty RFC 1918 reverse zones ($n)"
