@@ -83,4 +83,10 @@ struct dns_fixedname {
 
 #define dns_fixedname_name(fn)		(&((fn)->name))
 
+static inline dns_name_t *
+dns_fixedname_initname(dns_fixedname_t *fixed) {
+	dns_fixedname_init(fixed);
+	return (dns_fixedname_name(fixed));
+}
+
 #endif /* DNS_FIXEDNAME_H */

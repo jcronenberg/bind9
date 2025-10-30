@@ -661,6 +661,17 @@ ns_query_init(ns_client_t *client) {
 	client->query.dns64_sigaaaa = NULL;
 	client->query.dns64_aaaaok = NULL;
 	client->query.dns64_aaaaoklen = 0;
+	client->query.redirect.db = NULL;
+	client->query.redirect.node = NULL;
+	client->query.redirect.zone = NULL;
+	client->query.redirect.qtype = dns_rdatatype_none;
+	client->query.redirect.result = ISC_R_SUCCESS;
+	client->query.redirect.rdataset = NULL;
+	client->query.redirect.sigrdataset = NULL;
+	client->query.redirect.authoritative = isc_boolean_false;
+	client->query.redirect.is_zone  = isc_boolean_false;
+	client->query.redirect.fname =
+		dns_fixedname_initname(&client->query.redirect.fixed);
 	query_reset(client, ISC_FALSE);
 	result = query_newdbversion(client, 3);
 	if (result != ISC_R_SUCCESS) {
@@ -2676,8 +2687,7 @@ query_addsoa(ns_client_t *client, dns_db_t *db, dns_dbversion_t *version,
 		dns_fixedname_t foundname;
 		dns_name_t *fname;
 
-		dns_fixedname_init(&foundname);
-		fname = dns_fixedname_name(&foundname);
+		fname = dns_fixedname_initname(&foundname);
 
 		result = dns_db_findext(db, name, version, dns_rdatatype_soa,
 					client->query.dboptions, 0, &node,
@@ -2761,8 +2771,7 @@ query_addns(ns_client_t *client, dns_db_t *db, dns_dbversion_t *version) {
 	name = NULL;
 	rdataset = NULL;
 	node = NULL;
-	dns_fixedname_init(&foundname);
-	fname = dns_fixedname_name(&foundname);
+	fname = dns_fixedname_initname(&foundname);
 	dns_clientinfomethods_init(&cm, ns_client_sourceip);
 	dns_clientinfo_init(&ci, client);
 
@@ -3492,8 +3501,7 @@ query_addwildcardproof(ns_client_t *client, dns_db_t *db,
 	 *	wild *.example
 	 */
 	options = client->query.dboptions | DNS_DBFIND_NOWILD;
-	dns_fixedname_init(&wfixed);
-	wname = dns_fixedname_name(&wfixed);
+	wname = dns_fixedname_initname(&wfixed);
  again:
 	have_wname = ISC_FALSE;
 	/*
@@ -3518,8 +3526,7 @@ query_addwildcardproof(ns_client_t *client, dns_db_t *db,
 		/*
 		 * No NSEC proof available, return NSEC3 proofs instead.
 		 */
-		dns_fixedname_init(&cfixed);
-		cname = dns_fixedname_name(&cfixed);
+		cname = dns_fixedname_initname(&cfixed);
 		/*
 		 * Find the closest encloser.
 		 */
@@ -4097,8 +4104,7 @@ rpz_rrset_find(ns_client_t *client, dns_rpz_type_t rpz_type,
 	}
 
 	node = NULL;
-	dns_fixedname_init(&fixed);
-	found = dns_fixedname_name(&fixed);
+	found = dns_fixedname_initname(&fixed);
 	result = dns_db_findext(*dbp, name, version, type, DNS_DBFIND_GLUEOK,
 				client->now, &node, found,
 				&cm, &ci, *rdatasetp, NULL);
@@ -4335,8 +4341,7 @@ rpz_find(ns_client_t *client, dns_rdatatype_t qtype, dns_name_t *qnamef,
 		return (DNS_R_NXDOMAIN);
 	}
 
-	dns_fixedname_init(&fixed);
-	found = dns_fixedname_name(&fixed);
+	found = dns_fixedname_initname(&fixed);
 	result = dns_db_findext(*dbp, qnamef, *versionp, dns_rdatatype_any, 0,
 				client->now, nodep, found, &cm, &ci,
 				*rdatasetp, NULL);
@@ -4491,15 +4496,13 @@ rpz_rewrite_name(ns_client_t *client, dns_rdatatype_t qtype, dns_name_t *qname,
 		/*
 		 * Construct the policy's owner name.
 		 */
-		dns_fixedname_init(&prefixf);
-		prefix = dns_fixedname_name(&prefixf);
+		prefix = dns_fixedname_initname(&prefixf);
 		dns_name_split(qname, 1, prefix, NULL);
 		if (rpz_type == DNS_RPZ_TYPE_NSDNAME)
 			suffix = &rpz->nsdname;
 		else
 			suffix = &rpz->origin;
-		dns_fixedname_init(&rpz_qnamef);
-		rpz_qname = dns_fixedname_name(&rpz_qnamef);
+		rpz_qname = dns_fixedname_initname(&rpz_qnamef);
 		for (;;) {
 			result = dns_name_concatenate(prefix, suffix,
 						      rpz_qname, NULL);
@@ -4674,12 +4677,9 @@ rpz_rewrite(ns_client_t *client, dns_rdatatype_t qtype, isc_result_t qresult,
 		st->m.ttl = ~0;
 		memset(&st->r, 0, sizeof(st->r));
 		memset(&st->q, 0, sizeof(st->q));
-		dns_fixedname_init(&st->_qnamef);
-		dns_fixedname_init(&st->_r_namef);
-		dns_fixedname_init(&st->_fnamef);
-		st->qname = dns_fixedname_name(&st->_qnamef);
-		st->r_name = dns_fixedname_name(&st->_r_namef);
-		st->fname = dns_fixedname_name(&st->_fnamef);
+		st->qname = dns_fixedname_initname(&st->_qnamef);
+		st->r_name = dns_fixedname_initname(&st->_r_namef);
+		st->fname = dns_fixedname_initname(&st->_fnamef);
 		client->query.rpz_st = st;
 	}
 
@@ -4957,8 +4957,7 @@ rpz_ck_dnssec(ns_client_t *client, isc_result_t result,
 	 */
 	if ((rdataset->attributes & DNS_RDATASETATTR_NEGATIVE) == 0)
 		return (ISC_TRUE);
-	dns_fixedname_init(&fixed);
-	found = dns_fixedname_name(&fixed);
+	found = dns_fixedname_initname(&fixed);
 	dns_rdataset_init(&trdataset);
 	for (result = dns_rdataset_first(rdataset);
 	     result == ISC_R_SUCCESS;
@@ -5544,8 +5543,7 @@ redirect(ns_client_t *client, dns_name_t *name, dns_rdataset_t *rdataset,
 	if (client->view->redirect == NULL)
 		return (ISC_R_NOTFOUND);
 
-	dns_fixedname_init(&fixed);
-	found = dns_fixedname_name(&fixed);
+	found = dns_fixedname_initname(&fixed);
 	dns_rdataset_init(&trdataset);
 
 	dns_clientinfomethods_init(&cm, ns_client_sourceip);
@@ -6709,8 +6707,7 @@ query_find(ns_client_t *client, dns_fetchevent_t *event, dns_rdatatype_t qtype)
 				dns_name_t *found;
 				dns_name_t *qname;
 
-				dns_fixedname_init(&fixed);
-				found = dns_fixedname_name(&fixed);
+				found = dns_fixedname_initname(&fixed);
 				qname = client->query.qname;
 
 				query_findclosestnsec3(qname, db, version,
@@ -7153,8 +7150,7 @@ query_find(ns_client_t *client, dns_fetchevent_t *event, dns_rdatatype_t qtype)
 		 * Construct the new qname consisting of
 		 * <found name prefix>.<dname target>
 		 */
-		dns_fixedname_init(&fixed);
-		prefix = dns_fixedname_name(&fixed);
+		prefix = dns_fixedname_initname(&fixed);
 		dns_name_split(client->query.qname, nlabels, prefix, NULL);
 		INSIST(fname == NULL);
 		dbuf = query_getnamebuf(client);

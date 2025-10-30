@@ -61,6 +61,7 @@
 #include <dns/stats.h>
 #include <dns/tsig.h>
 #include <dns/validator.h>
+#include <dns/zone.h>
 
 #ifdef WANT_QUERYTRACE
 #define RTRACE(m)       isc_log_write(dns_lctx, \
@@ -282,7 +283,7 @@ struct fetchctx {
 	dns_adbfind_t *			altfind;
 	dns_adbaddrinfolist_t		forwaddrs;
 	dns_adbaddrinfolist_t		altaddrs;
-	isc_sockaddrlist_t		forwarders;
+	dns_forwarderlist_t		forwarders;
 	dns_fwdpolicy_t			fwdpolicy;
 	isc_sockaddrlist_t		bad;
 	isc_sockaddrlist_t		edns;
@@ -295,6 +296,8 @@ struct fetchctx {
 	isc_boolean_t			ns_ttl_ok;
 	isc_uint32_t			ns_ttl;
 	isc_counter_t *			qc;
+	dns_fixedname_t			fwdfname;
+	dns_name_t			*fwdname;
 
 	/*%
 	 * The number of events we're waiting for.
@@ -2887,7 +2890,7 @@ fctx_getaddresses(fetchctx_t *fctx, isc_boolean_t badcache) {
 	dns_resolver_t *res;
 	isc_stdtime_t now;
 	unsigned int stdoptions = 0;
-	isc_sockaddr_t *sa;
+	dns_forwarder_t *fwd;
 	dns_adbaddrinfo_t *ai;
 	isc_boolean_t all_bad;
 	dns_rdata_ns_t ns;
@@ -2931,8 +2934,8 @@ fctx_getaddresses(fetchctx_t *fctx, isc_boolean_t badcache) {
 	 * selective forwarders specified in the view; otherwise use the
 	 * resolver's forwarders (if any).
 	 */
-	sa = ISC_LIST_HEAD(fctx->forwarders);
-	if (sa == NULL) {
+	fwd = ISC_LIST_HEAD(fctx->forwarders);
+	if (fwd == NULL) {
 		dns_forwarders_t *forwarders = NULL;
 		dns_name_t *name = &fctx->name;
 		dns_name_t suffix;
@@ -2952,13 +2955,13 @@ fctx_getaddresses(fetchctx_t *fctx, isc_boolean_t badcache) {
 			name = &suffix;
 		}
 
-		dns_fixedname_init(&fixed);
-		domain = dns_fixedname_name(&fixed);
+		domain = dns_fixedname_initname(&fixed);
 		result = dns_fwdtable_find2(res->view->fwdtable, name,
 					    domain, &forwarders);
 		if (result == ISC_R_SUCCESS) {
-			sa = ISC_LIST_HEAD(forwarders->addrs);
+			fwd = ISC_LIST_HEAD(forwarders->fwdrs);
 			fctx->fwdpolicy = forwarders->fwdpolicy;
+			dns_name_copy(domain, fctx->fwdname, NULL);
 			if (fctx->fwdpolicy == dns_fwdpolicy_only &&
 			    isstrictsubdomain(domain, &fctx->domain)) {
 #ifdef ENABLE_FETCHLIMIT
@@ -2981,17 +2984,16 @@ fctx_getaddresses(fetchctx_t *fctx, isc_boolean_t badcache) {
 		}
 	}
 
-	while (sa != NULL) {
-		if ((isc_sockaddr_pf(sa) == AF_INET &&
+	while (fwd != NULL) {
+		if ((isc_sockaddr_pf(&fwd->addr) == AF_INET &&
 			 fctx->res->dispatches4 == NULL) ||
-		    (isc_sockaddr_pf(sa) == AF_INET6 &&
+		    (isc_sockaddr_pf(&fwd->addr) == AF_INET6 &&
 			fctx->res->dispatches6 == NULL)) {
-				sa = ISC_LIST_NEXT(sa, link);
+				fwd = ISC_LIST_NEXT(fwd, link);
 				continue;
 		}
 		ai = NULL;
-		result = dns_adb_findaddrinfo(fctx->adb,
-					      sa, &ai, 0);  /* XXXMLG */
+		result = dns_adb_findaddrinfo(fctx->adb, &fwd->addr, &ai, 0);
 		if (result == ISC_R_SUCCESS) {
 			dns_adbaddrinfo_t *cur;
 			ai->flags |= FCTX_ADDRINFO_FORWARDER;
@@ -3004,7 +3006,7 @@ fctx_getaddresses(fetchctx_t *fctx, isc_boolean_t badcache) {
 			else
 				ISC_LIST_APPEND(fctx->forwaddrs, ai, publink);
 		}
-		sa = ISC_LIST_NEXT(sa, link);
+		fwd = ISC_LIST_NEXT(fwd, link);
 	}
 
 	/*
@@ -4012,6 +4014,9 @@ fctx_create(dns_resolver_t *res, dns_name_t *name, dns_rdatatype_t type,
 	fctx->restarts = 0;
 	fctx->querysent = 0;
 	fctx->referrals = 0;
+
+	fctx->fwdname = dns_fixedname_initname(&fctx->fwdfname);
+
 	TIME_NOW(&fctx->start);
 	fctx->timeouts = 0;
 	fctx->lamecount = 0;
@@ -5715,6 +5720,107 @@ mark_related(dns_name_t *name, dns_rdataset_t *rdataset,
 		rdataset->attributes |= DNS_RDATASETATTR_EXTERNAL;
 }
 
+/*
+ * Returns true if 'name' is external to the namespace for which
+ * the server being queried can answer, either because it's not a
+ * subdomain or because it's below a forward declaration or a
+ * locally served zone.
+ */
+static inline isc_boolean_t
+name_external(dns_name_t *name, dns_rdatatype_t type, fetchctx_t *fctx) {
+	isc_result_t result;
+	dns_forwarders_t *forwarders = NULL;
+	dns_fixedname_t fixed, zfixed;
+	dns_name_t *fname = dns_fixedname_initname(&fixed);
+	dns_name_t *zfname = dns_fixedname_initname(&zfixed);
+	dns_name_t *apex = NULL;
+	dns_name_t suffix;
+	dns_zone_t *zone = NULL;
+	unsigned int labels;
+	dns_namereln_t rel;
+
+	apex = ISFORWARDER(fctx->addrinfo) ? fctx->fwdname : &fctx->domain;
+
+	/*
+	 * The name is outside the queried namespace.
+	 */
+	rel = dns_name_fullcompare(name, apex, &(int){ 0 },
+				   &(unsigned int){ 0U });
+	if (rel != dns_namereln_subdomain && rel != dns_namereln_equal) {
+		return (ISC_TRUE);
+	}
+
+	/*
+	 * If the record lives in the parent zone, adjust the name so we
+	 * look for the correct zone or forward clause.
+	 */
+	labels = dns_name_countlabels(name);
+	if (dns_rdatatype_atparent(type) && labels > 1U) {
+		dns_name_init(&suffix, NULL);
+		dns_name_getlabelsequence(name, 1, labels - 1, &suffix);
+		name = &suffix;
+	} else if (rel == dns_namereln_equal) {
+		/* If 'name' is 'apex', no further checking is needed. */
+		return (ISC_FALSE);
+	}
+
+	/*
+	 * If there is a locally served zone between 'apex' and 'name'
+	 * then don't cache.
+	 */
+	LOCK(&fctx->res->view->lock);
+	if (fctx->res->view->zonetable != NULL) {
+		unsigned int options = DNS_ZTFIND_NOEXACT;
+		result = dns_zt_find(fctx->res->view->zonetable, name, options,
+				     zfname, &zone);
+		if (zone != NULL) {
+			dns_zone_detach(&zone);
+		}
+		if (result == ISC_R_SUCCESS || result == DNS_R_PARTIALMATCH) {
+			if (dns_name_fullcompare(zfname, apex, &(int){ 0 },
+						 &(unsigned int){ 0U }) ==
+			    dns_namereln_subdomain)
+			{
+				UNLOCK(&fctx->res->view->lock);
+				return (ISC_TRUE);
+			}
+		}
+	}
+	UNLOCK(&fctx->res->view->lock);
+
+	/*
+	 * Look for a forward declaration below 'name'.
+	 */
+	result = dns_fwdtable_find2(fctx->res->view->fwdtable, name, fname,
+				    &forwarders);
+
+	if (ISFORWARDER(fctx->addrinfo)) {
+		/*
+		 * See if the forwarder declaration is better.
+		 */
+		if (result == ISC_R_SUCCESS) {
+			return (!dns_name_equal(fname, fctx->fwdname));
+		}
+
+		/*
+		 * If the lookup failed, the configuration must have
+		 * changed: play it safe and don't cache.
+		 */
+		return (ISC_TRUE);
+	} else if (result == ISC_R_SUCCESS &&
+		   forwarders->fwdpolicy == dns_fwdpolicy_only &&
+		   !ISC_LIST_EMPTY(forwarders->fwdrs))
+	{
+		/*
+		 * If 'name' is covered by a 'forward only' clause then we
+		 * can't cache this repsonse.
+		 */
+		return (ISC_TRUE);
+	}
+
+	return (ISC_FALSE);
+}
+
 static isc_result_t
 check_section(void *arg, dns_name_t *addname, dns_rdatatype_t type,
 	      dns_section_t section)
@@ -5743,7 +5849,7 @@ check_section(void *arg, dns_name_t *addname, dns_rdatatype_t type,
 	result = dns_message_findname(fctx->rmessage, section, addname,
 				      dns_rdatatype_any, 0, &name, NULL);
 	if (result == ISC_R_SUCCESS) {
-		external = ISC_TF(!dns_name_issubdomain(name, &fctx->domain));
+		external = ISC_TF(name_external(name, type, fctx));
 		if (type == dns_rdatatype_a) {
 			for (rdataset = ISC_LIST_HEAD(name->list);
 			     rdataset != NULL;
@@ -6602,6 +6708,13 @@ answer_response(fetchctx_t *fctx) {
 
 		case dns_namereln_subdomain:
 			/*
+			 * Don't accept DNAME from parent namespace.
+			 */
+			if (name_external(name, dns_rdatatype_dname, fctx)) {
+				continue;
+			}
+
+			 /*
 			 * In-scope DNAME records must have at least
 			 * as many labels as the domain being queried.
 			 * They also must be less that qname's labels
@@ -6829,11 +6942,9 @@ answer_response(fetchctx_t *fctx) {
 	 */
 	result = dns_message_firstname(message, DNS_SECTION_AUTHORITY);
 	while (!done && result == ISC_R_SUCCESS) {
-		isc_boolean_t external;
 		name = NULL;
 		dns_message_currentname(message, DNS_SECTION_AUTHORITY, &name);
-		external = ISC_TF(!dns_name_issubdomain(name, &fctx->domain));
-		if (!external) {
+		if (ISC_TF(!name_external(name, dns_rdatatype_ns, fctx))) {
 			/*
 			 * We expect to find NS or SIG NS rdatasets, and
 			 * nothing else.

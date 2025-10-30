@@ -51,6 +51,7 @@ typedef ISC_LIST(isc_buffer_t)		isc_bufferlist_t;	/*%< Buffer List */
 typedef struct isc_constregion		isc_constregion_t;	/*%< Const region */
 typedef struct isc_consttextregion	isc_consttextregion_t;	/*%< Const Text Region */
 typedef struct isc_counter		isc_counter_t;		/*%< Counter */
+typedef int16_t			isc_dscp_t;		/*%< Diffserv code point */
 typedef struct isc_entropy		isc_entropy_t;		/*%< Entropy */
 typedef struct isc_entropysource	isc_entropysource_t;	/*%< Entropy Source */
 typedef struct isc_event		isc_event_t;		/*%< Event */

@@ -66,6 +66,19 @@ struct ns_query {
 	unsigned int			dns64_aaaaoklen;
 	unsigned int			dns64_options;
 	unsigned int			dns64_ttl;
+	struct {
+		dns_db_t *              db;
+		dns_zone_t *            zone;
+		dns_dbnode_t *          node;
+		dns_rdatatype_t         qtype;
+		dns_name_t *            fname;
+		dns_fixedname_t         fixed;
+		isc_result_t            result;
+		dns_rdataset_t *        rdataset;
+		dns_rdataset_t *        sigrdataset;
+		isc_boolean_t           authoritative;
+		isc_boolean_t           is_zone;
+	} redirect;
 };
 
 #define NS_QUERYATTR_RECURSIONOK	0x0001
