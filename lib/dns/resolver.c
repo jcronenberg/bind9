@@ -1128,16 +1128,20 @@ fctx_cleanupaltaddrs(fetchctx_t *fctx) {
 }
 
 static inline void
-fctx_stopeverything(fetchctx_t *fctx, isc_boolean_t no_response,
-		    isc_boolean_t age_untried)
+fctx_stopqueries(fetchctx_t *fctx, isc_boolean_t no_response,
+		 isc_boolean_t age_untried)
 {
-	FCTXTRACE("stopeverything");
+        FCTXTRACE("stopqueries");
 	fctx_cancelqueries(fctx, no_response, age_untried);
+        fctx_stoptimer(fctx);
+}
+
+static inline void
+fctx_cleanupall(fetchctx_t *fctx) {
 	fctx_cleanupfinds(fctx);
 	fctx_cleanupaltfinds(fctx);
 	fctx_cleanupforwaddrs(fctx);
 	fctx_cleanupaltaddrs(fctx);
-	fctx_stoptimer(fctx);
 }
 
 #ifdef ENABLE_FETCHLIMIT
@@ -1390,7 +1394,7 @@ fctx_done(fetchctx_t *fctx, isc_result_t result, int line) {
 		age_untried = ISC_TRUE;
 
 	fctx->reason = NULL;
-	fctx_stopeverything(fctx, no_response, age_untried);
+        fctx_stopqueries(fctx, no_response, age_untried);
 
 	LOCK(&res->buckets[fctx->bucketnum].lock);
 
@@ -3706,11 +3710,12 @@ fctx_doshutdown(isc_task_t *task, isc_event_t *event) {
 		dns_resolver_cancelfetch(fctx->nsfetch);
 
 	/*
-	 * Shut down anything that is still running on behalf of this
-	 * fetch.  To avoid deadlock with the ADB, we must do this
-	 * before we lock the bucket lock.
+	 * Shut down anything still running on behalf of this
+	 * fetch, and clean up finds and addresses.  To avoid deadlock
+	 * with the ADB, we must do this before we lock the bucket lock.
 	 */
-	fctx_stopeverything(fctx, ISC_FALSE, ISC_FALSE);
+	fctx_stopqueries(fctx, ISC_FALSE, ISC_FALSE);
+	fctx_cleanupall(fctx);
 
 	LOCK(&res->buckets[bucketnum].lock);
 

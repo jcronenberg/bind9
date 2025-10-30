@@ -1,3 +1,7 @@
+4858.	[security]	Addresses could be referenced after being freed
+			in resolver.c, causing an assertion failure.
+			(CVE-2017-3145) [RT #46839]
+
 4489.   [security]      It was possible to trigger assertions when
                         processing a response. (CVE-2016-8864) [RT #43465]
 
