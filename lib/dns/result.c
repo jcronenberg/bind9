@@ -165,6 +165,8 @@ static const char *text[DNS_R_NRESULTS] = {
 	"TSIG in wrong location",	       /*%< 115 DNS_R_BADTSIG */
 	"SIG(0) in wrong location",	       /*%< 116 DNS_R_BADSIG0 */
 	"too many records",	               /*%< 117 DNS_R_TOOMANYRECORDS */
+
+	"NSEC3 iterations out of range",       /*%< 120 DNS_R_NSEC3ITERRANGE */
 };
 
 static const char *ids[DNS_R_NRESULTS] = {
@@ -290,6 +292,7 @@ static const char *ids[DNS_R_NRESULTS] = {
 	"DNS_R_BADTSIG",
 	"DNS_R_BADSIG0",
 	"DNS_R_TOOMANYRECORDS",
+	"DNS_R_NSEC3ITERRANGE",
 };
 
 static const char *rcode_text[DNS_R_NRCODERESULTS] = {
