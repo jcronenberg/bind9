@@ -381,7 +381,7 @@ def expected_artifacts(request):
     if test_specific_artifacts:
         return common_artifacts + test_specific_artifacts.args[0]
 
-    return common_artifacts
+    return None
 
 
 @pytest.fixture(scope="module")
@@ -652,14 +652,26 @@ def system_test(
             pytest.skip("Prerequisites missing.")
 
     def setup_test():
-        templates.render_auto()
-        try:
-            shell(f"{system_test_dir}/setup.sh")
-        except FileNotFoundError:
-            pass  # setup.sh is optional
-        except subprocess.CalledProcessError as exc:
-            isctest.log.error("Failed to run test setup")
-            pytest.fail(f"setup.sh exited with {exc.returncode}")
+        template_data = None
+        bootstrap_fn = getattr(request.module, "bootstrap", None)
+        if bootstrap_fn:
+            isctest.log.debug("Running test bootstrap()")
+            try:
+                template_data = bootstrap_fn()
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                isctest.log.error("Failed to run test bootstrap()")
+                kind = type(exc).__name__
+                pytest.fail(f"bootstrap() failed with {kind}")
+
+        templates.render_auto(template_data)
+
+        setup_sh_path = f"{system_test_dir}/setup.sh"
+        if os.path.exists(setup_sh_path):
+            try:
+                shell(f"{system_test_dir}/setup.sh")
+            except subprocess.CalledProcessError as exc:
+                isctest.log.error("Failed to run test setup.sh")
+                pytest.fail(f"setup.sh exited with {exc.returncode}")
 
     def start_servers():
         try:
@@ -713,7 +725,7 @@ def system_test(
         request.node.stash[FIXTURE_OK] = True
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def servers(ports, system_test_dir):
     instances = {}
     for entry in system_test_dir.rglob("*"):
@@ -729,3 +741,53 @@ def servers(ports, system_test_dir):
             except ValueError:
                 continue
     return instances
+
+
+@pytest.fixture(scope="module")
+def ns1(servers):
+    return servers["ns1"]
+
+
+@pytest.fixture(scope="module")
+def ns2(servers):
+    return servers["ns2"]
+
+
+@pytest.fixture(scope="module")
+def ns3(servers):
+    return servers["ns3"]
+
+
+@pytest.fixture(scope="module")
+def ns4(servers):
+    return servers["ns4"]
+
+
+@pytest.fixture(scope="module")
+def ns5(servers):
+    return servers["ns5"]
+
+
+@pytest.fixture(scope="module")
+def ns6(servers):
+    return servers["ns6"]
+
+
+@pytest.fixture(scope="module")
+def ns7(servers):
+    return servers["ns7"]
+
+
+@pytest.fixture(scope="module")
+def ns8(servers):
+    return servers["ns8"]
+
+
+@pytest.fixture(scope="module")
+def ns9(servers):
+    return servers["ns9"]
+
+
+@pytest.fixture(scope="module")
+def ns10(servers):
+    return servers["ns10"]
