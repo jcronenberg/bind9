@@ -377,7 +377,7 @@ addr () {
     digcmd $2 >$DIGNM
     #ckalive "$2" "server crashed by 'dig $2'" || return 1
     ADDR_ESC=`echo "$ADDR" | sed -e 's/\./\\\\./g'`
-    ADDR_TTL=`tr -d '\r' < $DIGNM | sed -n -e "s/^[-.a-z0-9]\{1,\}[	 ]*\([0-9]*\)	IN	AA*	${ADDR_ESC}\$/\1/p"`
+    ADDR_TTL=`tr -d '\r' < $DIGNM | sed -n -e "s/^[-.a-z0-9]\{1,\}[	 ]*\([0-9]*\)[	 ]IN[	 ]AA*[	 ]${ADDR_ESC}\$/\1/p"`
     if test -z "$ADDR_TTL"; then
 	setret "'dig $2' wrong; no address $ADDR record in $DIGNM"
 	return 1
@@ -531,6 +531,9 @@ for mode in native dnsrps; do
     ;; status: SERVFAIL, x
 EOF
   addr 35.35.35.35 "x.servfail @$ns5"		# 35 qname-wait-recurse no
+  here aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.wild.sub1.tld2 <<'EOF' # 36 wildcard CNAME name to long
+    ;; status: YXDOMAIN, x
+EOF
   end_group
   ckstats $ns3 test1 ns3 22
   ckstats $ns5 test1 ns5 1

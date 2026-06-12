@@ -6632,8 +6632,9 @@ query_rpzcname(query_ctx_t *qctx, dns_name_t *cname) {
 					      qctx->fname, NULL);
 		if (result == DNS_R_NAMETOOLONG) {
 			client->message->rcode = dns_rcode_yxdomain;
-		} else if (result != ISC_R_SUCCESS) {
-			return (result);
+		}
+		if (result != ISC_R_SUCCESS) {
+			return result;
 		}
 	} else {
 		dns_name_copynf(cname, qctx->fname);
