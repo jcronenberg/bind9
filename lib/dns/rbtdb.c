@@ -424,6 +424,7 @@ struct noqname {
 typedef struct acachectl acachectl_t;
 
 typedef struct rdatasetheader {
+	isc_refcount_t references;
 	/*%
 	 * Locked by the owning node's lock.
 	 */
@@ -1703,6 +1704,8 @@ init_rdataset(dns_rbtdb_t *rbtdb, rdatasetheader_t *h) {
 	h->next_is_relative = 0;
 	h->node_is_relative = 0;
 
+	isc_refcount_init(&h->references, 1);
+
 #if TRACE_HEADER
 	if (IS_CACHE(rbtdb) && rbtdb->common.rdclass == dns_rdataclass_in)
 		fprintf(stderr, "initialized header: %p\n", h);
@@ -1828,6 +1831,9 @@ rollback_node(dns_rbtnode_t *node, rbtdb_serial_t serial) {
 		node->dirty = 1;
 }
 
+static void
+clean_stale_headers(dns_rbtdb_t *rbtdb, isc_mem_t *mctx, rdatasetheader_t *top);
+
 static inline void
 mark_stale_header(dns_rbtdb_t *rbtdb, rdatasetheader_t *header) {
 
@@ -1840,26 +1846,37 @@ mark_stale_header(dns_rbtdb_t *rbtdb, rdatasetheader_t *header) {
 	header->attributes |= RDATASET_ATTR_STALE;
 	header->node->dirty = 1;
 
-	/*
-	 * If we have not been counted then there is nothing to do.
-	 */
-	if ((header->attributes & RDATASET_ATTR_STATCOUNT) == 0)
-		return;
+	isc_refcount_decrement(&header->references, NULL);
 
-	if (EXISTS(header))
+	/*
+	 * If this header has been counted, move it to the stale stats bucket.
+	 */
+	if ((header->attributes & RDATASET_ATTR_STATCOUNT) != 0 &&
+	    EXISTS(header))
+	{
 		update_rrsetstats(rbtdb, header, true);
+	}
+
+	clean_stale_headers(rbtdb, rbtdb->common.mctx, header);
 }
 
 static inline void
 clean_stale_headers(dns_rbtdb_t *rbtdb, isc_mem_t *mctx, rdatasetheader_t *top)
 {
 	rdatasetheader_t *d, *down_next;
+	rdatasetheader_t *down_parent = top;
 
 	for (d = top->down; d != NULL; d = down_next) {
 		down_next = d->down;
-		free_rdataset(rbtdb, mctx, d);
+		d->next = down_parent;
+
+		if (isc_refcount_current(&d->references) == 0) {
+			free_rdataset(rbtdb, mctx, d);
+			down_parent->down = down_next;
+		} else {
+			down_parent = d;
+		}
 	}
-	top->down = NULL;
 }
 
 static inline void
@@ -1875,6 +1892,7 @@ clean_cache_node(dns_rbtdb_t *rbtdb, dns_rbtnode_t *node) {
 	for (current = node->data; current != NULL; current = top_next) {
 		top_next = current->next;
 		clean_stale_headers(rbtdb, mctx, current);
+		INSIST(current->down == NULL);
 		/*
 		 * If current is nonexistent or stale, we can clean it up.
 		 */
@@ -3337,6 +3355,8 @@ bind_rdataset(dns_rbtdb_t *rbtdb, dns_rbtnode_t *node, rdatasetheader_t *header,
 
 	if (rdataset == NULL)
 		return;
+
+	isc_refcount_increment(&header->references, NULL);
 
 	new_reference(rbtdb, node, locktype);
 
@@ -6205,6 +6225,7 @@ add32(dns_rbtdb_t *rbtdb, dns_rbtnode_t *rbtnode, rbtdb_version_t *rbtversion,
 	bool header_nx;
 	bool newheader_nx;
 	bool merge;
+	bool do_expireheader = false;
 	dns_rdatatype_t rdtype, covers;
 	rbtdb_rdatatype_t negtype, sigtype;
 	dns_trust_t trust;
@@ -6729,6 +6750,7 @@ add32(dns_rbtdb_t *rbtdb, dns_rbtnode_t *rbtnode, rbtdb_version_t *rbtversion,
 			}
 
 			if (IS_CACHE(rbtdb) && overmaxtype(rbtdb, ntypes)) {
+				do_expireheader = true;
 				if (expireheader == NULL) {
 					expireheader = newheader;
 				}
@@ -6742,9 +6764,6 @@ add32(dns_rbtdb_t *rbtdb, dns_rbtnode_t *rbtnode, rbtdb_version_t *rbtversion,
 					 */
 					expireheader = newheader;
 				}
-
-				set_ttl(rbtdb, expireheader, 0);
-				mark_stale_header(rbtdb, expireheader);
 			}
 		}
 	}
@@ -6763,6 +6782,15 @@ add32(dns_rbtdb_t *rbtdb, dns_rbtnode_t *rbtnode, rbtdb_version_t *rbtversion,
 	if (addedrdataset != NULL) {
 		bind_rdataset(rbtdb, rbtnode, newheader, now,
 			      isc_rwlocktype_write, addedrdataset);
+	}
+
+	/*
+	 * We need to delay the expiration of the header until we are bound to
+	 * it to prevent decrement-then-increment on the header references.
+	 */
+	if (do_expireheader) {
+		set_ttl(rbtdb, expireheader, 0);
+		mark_stale_header(rbtdb, expireheader);
 	}
 
 	return (ISC_R_SUCCESS);
@@ -8996,6 +9024,12 @@ rdataset_disassociate(dns_rdataset_t *rdataset) {
 	dns_db_t *db = rdataset->private1;
 	dns_dbnode_t *node = rdataset->private2;
 
+	if (rdataset->methods == &rdataset_methods) {
+		rdatasetheader_t *header = rdataset->private3;
+		header--;
+		isc_refcount_decrement(&header->references, NULL);
+	}
+
 	detachnode(db, &node);
 }
 
@@ -9107,6 +9141,11 @@ rdataset_clone(dns_rdataset_t *source, dns_rdataset_t *target) {
 	dns_dbnode_t *cloned_node = NULL;
 
 	attachnode(db, node, &cloned_node);
+	if (source->methods == &rdataset_methods) {
+		rdatasetheader_t *header = source->private3;
+		header--;
+		isc_refcount_increment(&header->references, NULL);
+	}
 	INSIST(!ISC_LINK_LINKED(target, link));
 	*target = *source;
 	ISC_LINK_INIT(target, link);
@@ -9272,6 +9311,11 @@ rdatasetiter_destroy(dns_rdatasetiter_t **iteratorp) {
 
 	rbtiterator = (rbtdb_rdatasetiter_t *)(*iteratorp);
 
+	if (rbtiterator->current != NULL) {
+		isc_refcount_decrement(&rbtiterator->current->references, NULL);
+		rbtiterator->current = NULL;
+	}
+
 	if (rbtiterator->common.version != NULL)
 		closeversion(rbtiterator->common.db,
 			     &rbtiterator->common.version, false);
@@ -9328,8 +9372,17 @@ rdatasetiter_first(dns_rdatasetiter_t *iterator) {
 			break;
 	}
 
+	if (header != NULL) {
+		isc_refcount_increment0(&header->references, NULL);
+	}
+
 	NODE_UNLOCK(&rbtdb->node_locks[rbtnode->locknum].lock,
 		    isc_rwlocktype_read);
+
+	if (rbtiterator->current != NULL) {
+		isc_refcount_decrement(&rbtiterator->current->references, NULL);
+		rbtiterator->current = NULL;
+	}
 
 	rbtiterator->current = header;
 
@@ -9404,8 +9457,17 @@ rdatasetiter_next(dns_rdatasetiter_t *iterator) {
 		}
 	}
 
+	if (header != NULL) {
+		isc_refcount_increment0(&header->references, NULL);
+	}
+
 	NODE_UNLOCK(&rbtdb->node_locks[rbtnode->locknum].lock,
 		    isc_rwlocktype_read);
+
+	if (rbtiterator->current != NULL) {
+		isc_refcount_decrement(&rbtiterator->current->references, NULL);
+		rbtiterator->current = NULL;
+	}
 
 	rbtiterator->current = header;
 
@@ -10017,6 +10079,19 @@ rdataset_getadditional(dns_rdataset_t *rdataset, dns_rdatasetadditional_t type,
 }
 
 static void
+free_acache_cbarg(isc_mem_t *mctx, acache_cbarg_t **cbargp) {
+	acache_cbarg_t *cbarg;
+
+	REQUIRE(cbargp != NULL && *cbargp != NULL);
+
+	cbarg = *cbargp;
+	isc_refcount_decrement(&cbarg->header->references, NULL);
+	isc_mem_put(mctx, cbarg, sizeof(*cbarg));
+
+	*cbargp = NULL;
+}
+
+static void
 acache_callback(dns_acacheentry_t *entry, void **arg) {
 	dns_rbtdb_t *rbtdb;
 	dns_rbtnode_t *rbtnode;
@@ -10055,7 +10130,7 @@ acache_callback(dns_acacheentry_t *entry, void **arg) {
 		acarray[count].entry = NULL;
 		INSIST(acarray[count].cbarg == cbarg);
 		acarray[count].cbarg = NULL;
-		isc_mem_put(rbtdb->common.mctx, cbarg, sizeof(acache_cbarg_t));
+		free_acache_cbarg(rbtdb->common.mctx, &cbarg);
 		dns_acache_detachentry(&entry);
 	}
 
@@ -10084,9 +10159,7 @@ acache_cancelentry(isc_mem_t *mctx, dns_acacheentry_t *entry,
 		dns_db_detach(&cbarg->db);
 	}
 
-	isc_mem_put(mctx, cbarg, sizeof(acache_cbarg_t));
-
-	*cbargp = NULL;
+	free_acache_cbarg(mctx, cbargp);
 }
 
 static isc_result_t
@@ -10122,6 +10195,7 @@ rdataset_setadditional(dns_rdataset_t *rdataset, dns_rdatasetadditional_t type,
 	newcbarg = isc_mem_get(rbtdb->common.mctx, sizeof(*newcbarg));
 	if (newcbarg == NULL)
 		return (ISC_R_NOMEMORY);
+	isc_refcount_increment(&header->references, NULL);
 	newcbarg->type = type;
 	newcbarg->count = count;
 	newcbarg->header = header;
@@ -10215,8 +10289,7 @@ rdataset_setadditional(dns_rdataset_t *rdataset, dns_rdatasetadditional_t type,
 		} else {
 			dns_db_detachnode((dns_db_t *)rbtdb, &newcbarg->node);
 			dns_db_detach(&newcbarg->db);
-			isc_mem_put(rbtdb->common.mctx, newcbarg,
-			    sizeof(*newcbarg));
+			free_acache_cbarg(rbtdb->common.mctx, &newcbarg);
 		}
 	}
 
