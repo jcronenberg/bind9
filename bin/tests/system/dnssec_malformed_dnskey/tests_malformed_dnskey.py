@@ -82,7 +82,7 @@ def bootstrap():
             keys=keys,
             lifetime=lifetime,
             add_dnskey=True,
-            deterministic=False,  # for OpenSSL<3.2.0 compat
+            #deterministic=False,  # for OpenSSL<3.2.0 compat
         )
 
     # force use of the malformed ZSKs for dnssec verification

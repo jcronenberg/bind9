@@ -47,12 +47,14 @@ class RootNsHandler(QnameQtypeHandler, StaticResponseHandler):
 class ExampleCookieHandler(DomainHandler):
     domains = ["example."]
 
-    def _get_cookie(self, qctx: QueryContext) -> dns.edns.CookieOption | None:
+    def _get_cookie(self, qctx: QueryContext) -> dns.edns.GenericOption | None:
         for o in qctx.query.options:
             if o.otype == dns.edns.OptionType.COOKIE:
-                cookie = o
-                cookie.server = b"\x11\x22\x33\x44\x55\x66\x77\x88"
-                return cookie
+                client_cookie = o.data[:8]
+                server_cookie = b"\x11\x22\x33\x44\x55\x66\x77\x88"
+                return dns.edns.GenericOption(
+                    dns.edns.OptionType.COOKIE, client_cookie + server_cookie
+                )
 
         return None
 

@@ -89,7 +89,7 @@ def bootstrap():
                     dnskey=dnskey,
                     inception=inception,
                     expiration=expiration,
-                    deterministic=False,
+                    #deterministic=False,
                 )
 
                 rdataset = dns.rdataset.Rdataset(rrset.rdclass, dns.rdatatype.RRSIG)
@@ -110,7 +110,7 @@ def bootstrap():
             dnskey=dnskey,
             inception=inception,
             expiration=expiration,
-            deterministic=False,
+            #deterministic=False,
         )
         rdataset = dns.rdataset.Rdataset(rrset.rdclass, dns.rdatatype.RRSIG)
         rdataset.add(rrsig, dnskey_rrset.ttl)
