@@ -5621,28 +5621,14 @@ validated(isc_task_t *task, isc_event_t *event) {
 		inc_stats(res, dns_resstatscounter_valfail);
 		fctx->valfail++;
 		fctx->vresult = vevent->result;
-		if (fctx->vresult != DNS_R_BROKENCHAIN) {
-			result = ISC_R_NOTFOUND;
-			if (vevent->rdataset != NULL) {
-				result = dns_db_findnode(
-					fctx->cache, vevent->name, true, &node);
+		switch (fctx->vresult) {
+		case DNS_R_BROKENCHAIN:
+		case ISC_R_CANCELED:
+		case ISC_R_SHUTTINGDOWN:
+		case ISC_R_QUOTA:
+			if (negative) {
+				break;
 			}
-			if (result == ISC_R_SUCCESS) {
-				(void)dns_db_deleterdataset(fctx->cache, node,
-							    NULL, vevent->type,
-							    0);
-			}
-			if (result == ISC_R_SUCCESS &&
-			    vevent->sigrdataset != NULL) {
-				(void)dns_db_deleterdataset(
-					fctx->cache, node, NULL,
-					dns_rdatatype_rrsig, vevent->type);
-			}
-			if (result == ISC_R_SUCCESS) {
-				dns_db_detachnode(fctx->cache, &node);
-			}
-		}
-		if (fctx->vresult == DNS_R_BROKENCHAIN && !negative) {
 			/*
 			 * Cache the data as pending for later validation.
 			 */
@@ -5665,6 +5651,26 @@ validated(isc_task_t *task, isc_event_t *event) {
 			if (result == ISC_R_SUCCESS) {
 				dns_db_detachnode(fctx->cache, &node);
 			}
+			break;
+		default:
+			result = ISC_R_NOTFOUND;
+			if (vevent->rdataset != NULL) {
+				result = dns_db_findnode(
+					fctx->cache, vevent->name, true, &node);
+			}
+			if (result == ISC_R_SUCCESS) {
+				(void)dns_db_deleterdataset(fctx->cache, node,
+							    NULL, vevent->type,
+							    0);
+				if (vevent->sigrdataset != NULL) {
+					(void)dns_db_deleterdataset(
+						fctx->cache, node, NULL,
+						dns_rdatatype_rrsig,
+						vevent->type);
+				}
+				dns_db_detachnode(fctx->cache, &node);
+			}
+			break;
 		}
 		result = fctx->vresult;
 		add_bad(fctx, addrinfo, result, badns_validation);
@@ -5691,6 +5697,16 @@ validated(isc_task_t *task, isc_event_t *event) {
 				dns_resolver_addbadcache(res, &fctx->name,
 							 fctx->type, &expire);
 			}
+			fctx_done(fctx, result, __LINE__); /* Locks bucket. */
+		} else if (result == ISC_R_CANCELED ||
+			   result == ISC_R_SHUTTINGDOWN ||
+			   result == ISC_R_QUOTA)
+		{
+			/*
+			 * An exhausted DNSSEC validation budget isn't
+			 * recoverable: retrying would only do more
+			 * validation work against the same limit.
+			 */
 			fctx_done(fctx, result, __LINE__); /* Locks bucket. */
 		} else {
 			fctx_try(fctx, true, true); /* Locks bucket. */
