@@ -4460,5 +4460,46 @@ n=$((n + 1))
 if [ "$ret" -ne 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
+# GL #5349: a securely-delegated zone whose parent DS RRset is flooded
+# with many mismatched DS records (each a unique key tag) must be
+# rejected without unbounded per-DS matching work.  The validation quota
+# caps the DS x DNSKEY matching, so the DNSKEY fetch fails with
+# ISC_R_QUOTA and the answer is SERVFAIL.
+echo_i "check that a DS key tag flood is bounded ($n)"
+ret=0
+nextpart ns4/named.run >/dev/null
+dig_with_opts @10.53.0.4 keytrap.example. soa >dig.out.ns4.test$n || ret=1
+grep "status: SERVFAIL" dig.out.ns4.test$n >/dev/null || ret=1
+wait_for_log 5 "quota reached resolving 'keytrap.example/DNSKEY/IN'" ns4/named.run || ret=1
+n=$((n + 1))
+if [ "$ret" -ne 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
+# GL #5349: the parent DS RRset here is smaller than the validation quota,
+# but the child DNSKEY RRset has several keys, so the DS-by-DNSKEY
+# combination count exceeds the product cap.  The DNSKEY fetch must fail
+# terminally with the validation quota.
+echo_i "check that DS x DNSKEY combinations are bounded ($n)"
+ret=0
+nextpart ns4/named.run >/dev/null
+dig_with_opts @10.53.0.4 keytrap2.example. soa >dig.out.ns4.test$n || ret=1
+grep "status: SERVFAIL" dig.out.ns4.test$n >/dev/null || ret=1
+wait_for_log 5 "quota reached resolving 'keytrap2.example/DNSKEY/IN'" ns4/named.run || ret=1
+n=$((n + 1))
+if [ "$ret" -ne 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
+# GL #5349: unsupported DS algorithms and digest types do not reach
+# DNSKEY matching and therefore must not contribute to its combination
+# cap.  The delegation has one supported DS and must validate.
+echo_i "check that unsupported DS records do not count towards the DS x DNSKEY cap ($n)"
+ret=0
+dig_with_opts @10.53.0.4 keytrap3.example. soa >dig.out.ns4.test$n || ret=1
+grep "status: NOERROR" dig.out.ns4.test$n >/dev/null || ret=1
+grep "flags:.*ad.*QUERY" dig.out.ns4.test$n >/dev/null || ret=1
+n=$((n + 1))
+if [ "$ret" -ne 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
 echo_i "exit status: $status"
 [ $status -eq 0 ] || exit 1

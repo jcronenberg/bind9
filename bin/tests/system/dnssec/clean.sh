@@ -72,6 +72,7 @@ rm -f ./ns3/expired.example.db ./ns3/update-nsec3.example.db
 rm -f ./ns3/expiring.example.db ./ns3/nosign.example.db
 rm -f ./ns3/future.example.db ./ns3/trusted-future.key
 rm -f ./ns3/inline.example.db.signed
+rm -f ./ns3/keytrap.example.db ./ns3/keytrap2.example.db ./ns3/keytrap3.example.db
 rm -f ./ns3/kskonly.example.db
 rm -f ./ns3/lower.example.db ./ns3/upper.example.db ./ns3/upper.example.db.lower
 rm -f ./ns3/managed-future.example.db
