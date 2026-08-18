@@ -126,6 +126,21 @@
 
 #define NEGATIVE(r)	(((r)->attributes & DNS_RDATASETATTR_NEGATIVE) != 0)
 
+/*
+ * Upper bound on the DNSKEY matching work done for a single DS RRset.
+ * This mirrors the default of max-validations-per-fetch in newer BIND
+ * versions: each DS that matches no DNSKEY, and each DS whose matching
+ * DNSKEY is checked against the RRSIGs, consumes one validation.
+ */
+#define MAX_DS_VALIDATIONS 16
+
+/*
+ * How many DS x DNSKEY matching combinations to allow per validation
+ * permitted by MAX_DS_VALIDATIONS; matching a DS against a DNSKEY
+ * (a keytag computation) is far cheaper than a signature validation.
+ */
+#define DS_DNSKEY_COMBINATIONS_PER_VALIDATION 2
+
 static void
 destroy(dns_validator_t *val);
 
@@ -476,10 +491,17 @@ fetch_callback_validator(isc_task_t *task, isc_event_t *event) {
 		validator_log(val, ISC_LOG_DEBUG(3),
 			      "fetch_callback_validator: got %s",
 			      isc_result_totext(eresult));
-		if (eresult == ISC_R_CANCELED)
+		switch (eresult) {
+		case ISC_R_CANCELED:
+		case ISC_R_SHUTTINGDOWN:
+		case ISC_R_QUOTA:
+			/* Abort, abort, abort */
 			validator_done(val, eresult);
-		else
+			break;
+		default:
 			validator_done(val, DNS_R_BROKENCHAIN);
+			break;
+		}
 	}
 	want_destroy = exit_check(val);
 	UNLOCK(&val->lock);
@@ -552,10 +574,17 @@ dsfetched(isc_task_t *task, isc_event_t *event) {
 		validator_log(val, ISC_LOG_DEBUG(3),
 			      "dsfetched: got %s",
 			      isc_result_totext(eresult));
-		if (eresult == ISC_R_CANCELED)
+		switch (eresult) {
+		case ISC_R_CANCELED:
+		case ISC_R_SHUTTINGDOWN:
+		case ISC_R_QUOTA:
+			/* Abort, abort, abort */
 			validator_done(val, eresult);
-		else
+			break;
+		default:
 			validator_done(val, DNS_R_BROKENCHAIN);
+			break;
+		}
 	}
 	want_destroy = exit_check(val);
 	UNLOCK(&val->lock);
@@ -652,10 +681,17 @@ dsfetched2(isc_task_t *task, isc_event_t *event) {
 		if (result != DNS_R_WAIT)
 			validator_done(val, result);
 	} else {
-		if (eresult == ISC_R_CANCELED)
+		switch (eresult) {
+		case ISC_R_CANCELED:
+		case ISC_R_SHUTTINGDOWN:
+		case ISC_R_QUOTA:
+			/* Abort, abort, abort */
 			validator_done(val, eresult);
-		else
+			break;
+		default:
 			validator_done(val, DNS_R_NOVALIDDS);
+			break;
+		}
 	}
 	isc_event_free(&event);
 	want_destroy = exit_check(val);
@@ -1998,6 +2034,9 @@ validatezonekey(dns_validator_t *val) {
 	bool supported_algorithm;
 	bool atsep = false;
 	char digest_types[256];
+	size_t keycount;
+	unsigned int matchds_attempts = 0;
+	unsigned int nvalidations = 0;
 
 	/*
 	 * Caller must be holding the validator lock.
@@ -2223,6 +2262,7 @@ validatezonekey(dns_validator_t *val) {
 	 */
 
 	supported_algorithm = false;
+	keycount = dns_rdataset_count(val->event->rdataset);
 
 	/*
 	 * If DNS_DSDIGEST_SHA256 or DNS_DSDIGEST_SHA384 is present we
@@ -2283,6 +2323,27 @@ validatezonekey(dns_validator_t *val) {
 
 		supported_algorithm = true;
 
+		matchds_attempts++;
+
+		/*
+		 * Matching one DS against the DNSKEY RRset derives a key tag
+		 * for every DNSKEY, so each DS that reaches this point costs
+		 * one key-tag computation per key.  Bound the accumulated
+		 * DS-by-DNSKEY work at DS_DNSKEY_COMBINATIONS_PER_VALIDATION
+		 * key tags per allowed validation and stop once it is
+		 * exceeded, so a flood of mismatched (or matching but
+		 * unsigned) DS records cannot force unbounded matching.
+		 * Ignored DS (unsupported digest or algorithm) are skipped
+		 * above without being counted.
+		 */
+		if ((size_t)matchds_attempts * keycount >
+		    (size_t)MAX_DS_VALIDATIONS *
+			    DS_DNSKEY_COMBINATIONS_PER_VALIDATION)
+		{
+			result = ISC_R_QUOTA;
+			break;
+		}
+
 		dns_rdataset_init(&trdataset);
 		dns_rdataset_clone(val->event->rdataset, &trdataset);
 
@@ -2295,6 +2356,16 @@ validatezonekey(dns_validator_t *val) {
 			dns_rdataset_disassociate(&trdataset);
 			validator_log(val, ISC_LOG_DEBUG(3),
 				      "no DNSKEY matching DS");
+			/*
+			 * A DS that matches no DNSKEY is wasted key-tag
+			 * matching work; count it against the validation
+			 * quota so a flood of mismatched DS records cannot
+			 * force unbounded matching.
+			 */
+			if (++nvalidations >= MAX_DS_VALIDATIONS) {
+				result = ISC_R_QUOTA;
+				break;
+			}
 			continue;
 		}
 
@@ -2308,8 +2379,16 @@ validatezonekey(dns_validator_t *val) {
 			break;
 		validator_log(val, ISC_LOG_DEBUG(3),
 			      "no RRSIG matching DS key");
+		if (++nvalidations >= MAX_DS_VALIDATIONS) {
+			result = ISC_R_QUOTA;
+			break;
+		}
 	}
-	if (result == ISC_R_SUCCESS) {
+	if (result == ISC_R_QUOTA) {
+		validator_log(val, ISC_LOG_DEBUG(3),
+			      "maximum number of validations exceeded");
+		return (result);
+	} else if (result == ISC_R_SUCCESS) {
 		marksecure(event);
 		validator_log(val, ISC_LOG_DEBUG(3), "marking as secure (DS)");
 		return (result);
