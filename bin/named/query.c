@@ -9132,6 +9132,7 @@ query_find(ns_client_t *client, dns_fetchevent_t *event, dns_rdatatype_t qtype)
 		} else if (client->query.dns64_aaaaok != NULL) {
 			query_filter64(client, &fname, rdataset, dbuf,
 				       DNS_SECTION_ANSWER);
+			noqname = NULL;
 			query_putrdataset(client, &rdataset);
 		} else {
 			if (!is_zone && RECURSIONOK(client))
