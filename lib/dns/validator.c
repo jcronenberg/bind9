@@ -937,6 +937,8 @@ validator_callback_nsec(isc_task_t *task, isc_event_t *event) {
 				if (NEEDNOQNAME(val)) {
 					proofs[DNS_VALIDATOR_NOQNAMEPROOF] =
 						devent->name;
+					val->event->noqnametype =
+						dns_rdatatype_nsec;
 				}
 			}
 		}
@@ -2270,6 +2272,30 @@ findnsec3proofs(dns_validator_t *val) {
 		if (unknown) {
 			val->attributes |= VALATTR_FOUNDUNKNOWN;
 		}
+		if (result == DNS_R_NSEC3ITERRANGE) {
+			/*
+			 * We don't really know which NSEC3 record provides
+			 * which proof.  Just populate them.
+			 */
+			if (NEEDNOQNAME(val) &&
+			    proofs[DNS_VALIDATOR_NOQNAMEPROOF] == NULL)
+			{
+				proofs[DNS_VALIDATOR_NOQNAMEPROOF] = name;
+				val->event->noqnametype = dns_rdatatype_nsec3;
+			} else if (setclosest) {
+				proofs[DNS_VALIDATOR_CLOSESTENCLOSER] = name;
+			} else if (NEEDNODATA(val) &&
+				   proofs[DNS_VALIDATOR_NODATAPROOF] == NULL)
+			{
+				proofs[DNS_VALIDATOR_NODATAPROOF] = name;
+			} else if (NEEDNOWILDCARD(val) &&
+				   proofs[DNS_VALIDATOR_NOWILDCARDPROOF] ==
+					   NULL)
+			{
+				proofs[DNS_VALIDATOR_NOWILDCARDPROOF] = name;
+			}
+			return (result);
+		}
 		if (result != ISC_R_SUCCESS) {
 			continue;
 		}
@@ -2283,6 +2309,7 @@ findnsec3proofs(dns_validator_t *val) {
 		if (!exists && setnearest) {
 			val->attributes |= VALATTR_FOUNDNOQNAME;
 			proofs[DNS_VALIDATOR_NOQNAMEPROOF] = name;
+			val->event->noqnametype = dns_rdatatype_nsec3;
 			if (optout) {
 				val->attributes |= VALATTR_FOUNDOPTOUT;
 			}
